@@ -4,7 +4,8 @@ use std::{
     io::{self, Read},
     path::Path,
 };
-#[repr(u16)]
+
+use minifb::Key;
 pub enum Chip8OpCode {
     ///0x00E0
     ClearScreen,
@@ -75,7 +76,7 @@ pub enum Chip8OpCode {
         registry: u8,
         registry2: u8,
     },
-    //below here needs tests
+
     AddReg {
         registry: u8,
         registry2: u8,
@@ -96,6 +97,39 @@ pub enum Chip8OpCode {
         registry: u8,
         registry2: u8,
     },
+    //below here needs tests
+    ///loads from memory starting from i into registries including max_registry
+    LoadMemIntoRegs {
+        max_registry: u8,
+    },
+    ///stores the registries 0..=max_registry in memory starting from i
+    StoreRegsIntoMem {
+        max_registry: u8,
+    },
+    ///store binary-coded decimal representation of vX to memory at i, i + 1 and i + 2
+    StoreVXAsBinary {
+        registry: u8,
+    },
+    AddAssignI {
+        registry: u8,
+    },
+    SkipIfNotPressed {
+        registry: u8,
+    },
+    SkipIfPressed {
+        registry: u8,
+    },
+    PutDelayInRegX {
+        registry: u8,
+    },
+    SetDelay {
+        time: u8,
+    },
+    ///Fx0A
+    ///waits for a key press then stores it in the registey
+    WaitForKey {
+        registry: u8,
+    },
 }
 impl Chip8OpCode {
     fn decode(opcode: u16) -> Result<Self, UnkownOpCodeErr> {
@@ -107,7 +141,7 @@ impl Chip8OpCode {
         //gets the value
         // kk
         let value = (opcode & 0x00FF) as u8;
-
+        //y
         let registry2 = ((opcode & 0x00F0) >> 4) as u8;
         let n = (opcode & 0x000F) as u8;
 
@@ -175,6 +209,19 @@ impl Chip8OpCode {
                 registry,
                 registry2,
             }),
+            0xF if registry2 == 6 && n == 5 => Ok(Self::LoadMemIntoRegs {
+                max_registry: registry,
+            }),
+            0xF if registry2 == 5 && n == 5 => Ok(Self::StoreRegsIntoMem {
+                max_registry: registry,
+            }),
+            0xF if registry2 == 3 && n == 3 => Ok(Self::StoreVXAsBinary { registry }),
+            0xF if registry2 == 1 && n == 0xE => Ok(Self::AddAssignI { registry }),
+            0xE if registry2 == 0xA && n == 1 => Ok(Self::SkipIfNotPressed { registry }),
+            0xE if registry2 == 9 && n == 0xE => Ok(Self::SkipIfPressed { registry }),
+            0xF if registry2 == 0 && n == 7 => Ok(Self::PutDelayInRegX { registry }),
+            0xF if registry2 == 1 && n == 5 => Ok(Self::SetDelay { time: registry }),
+            0xF if registry2 == 0 && n == 0xA => Ok(Self::WaitForKey { registry }),
             _ => Err(UnkownOpCodeErr(opcode)),
         }
     }
@@ -200,6 +247,25 @@ const FONT_SET: [u8; 80] = [
     0xF0, 0x80, 0xF0, 0x80, 0xF0, //E
     0xF0, 0x80, 0xF0, 0x80, 0x80, //F
 ];
+pub const KEY_MAP: [Key; 16] = [
+    Key::Key0,
+    Key::Key1,
+    Key::Key2,
+    Key::Key3,
+    Key::Key4,
+    Key::Key5,
+    Key::Key6,
+    Key::Key7,
+    Key::Key8,
+    Key::Key9,
+    Key::A,
+    Key::B,
+    Key::C,
+    Key::D,
+    Key::E,
+    Key::F,
+];
+
 pub const SCREEN_WIDTH: u8 = 64;
 pub const SCREEN_HEIGHT: u8 = 32;
 pub struct Chip8Emulator {
@@ -216,6 +282,10 @@ pub struct Chip8Emulator {
     delay_timer: u8,
     sound_timer: u8,
     draw_flag: bool,
+    ///holds if that key is pressed or not
+    keys: [bool; 16],
+    ///only used for WaitForKey (Fx0A)
+    active_key: Option<u8>,
 }
 impl Chip8Emulator {
     ///makes a completely blank chip8 emulator
@@ -235,6 +305,8 @@ impl Chip8Emulator {
             sound_timer: 0,
             delay_timer: 0,
             draw_flag: false,
+            keys: [false; 16],
+            active_key: None,
         }
     }
     pub fn get_draw_flag(&self) -> bool {
@@ -286,27 +358,7 @@ impl Chip8Emulator {
         //this is for the few opcodes that dont want the program counter to increase normally
         let mut increase_program_counter = true;
 
-        //gets the opcode from the next two bytes
-        let opcode = u16::from_be_bytes([
-            self.memory[self.program_counter],
-            self.memory[self.program_counter + 1],
-        ]);
-        // println!("opcode: {opcode:X}");
-
-        let opcode = match Chip8OpCode::decode(opcode) {
-            Ok(opcode) => opcode,
-            //if zero just increase program counter then return
-            Err(UnkownOpCodeErr(0)) => {
-                self.increase_program_counter();
-                return;
-            }
-
-            Err(UnkownOpCodeErr(e)) => {
-                println!("unkown opcode:{e:X}");
-                self.increase_program_counter();
-                return;
-            }
-        };
+        let opcode = self.current_op_code();
 
         match opcode {
             Chip8OpCode::ClearScreen => {
@@ -452,10 +504,96 @@ impl Chip8Emulator {
                 self.set_v(registry, sub.0);
                 self.set_v(0xF, !sub.1 as u8)
             }
+            Chip8OpCode::LoadMemIntoRegs { max_registry } => {
+                for i in 0..=max_registry {
+                    let mem = self.get_memory(self.index_register + i as u16);
+                    self.set_v(i, mem);
+                }
+            }
+            Chip8OpCode::StoreRegsIntoMem { max_registry } => {
+                for i in 0..=max_registry {
+                    let v = self.get_v(i);
+                    self.memory[self.index_register as usize + i as usize] = v;
+                }
+            }
+            Chip8OpCode::StoreVXAsBinary { registry } => {
+                let n = self.get_v(registry);
+                let hundreds = n / 100;
+                let tens = (n / 10) % 10;
+                let ones = n % 10;
+                let index = self.index_register as usize;
+                self.memory[index] = hundreds;
+                self.memory[index + 1] = tens;
+                self.memory[index + 2] = ones;
+            }
+            Chip8OpCode::AddAssignI { registry } => {
+                self.index_register += self.get_v(registry) as u16
+            }
+            Chip8OpCode::SkipIfNotPressed { registry } => {
+                if self.keys[self.get_v(registry) as usize] == false {
+                    self.increase_program_counter();
+                }
+            }
+            Chip8OpCode::SkipIfPressed { registry } => {
+                if self.keys[self.get_v(registry) as usize] == true {
+                    self.increase_program_counter();
+                }
+            }
+            Chip8OpCode::PutDelayInRegX { registry } => self.set_v(registry, self.delay_timer),
+            Chip8OpCode::SetDelay { time } => self.delay_timer = time,
+            Chip8OpCode::WaitForKey { registry } => {
+                if self.active_key.is_none() {
+                    for (i, &is_down) in self.keys.iter().enumerate() {
+                        if is_down {
+                            self.active_key = Some(i as u8);
+                            break;
+                        }
+                    }
+                    increase_program_counter = false
+                } else if let Some(key_idx) = self.active_key {
+                    if !self.keys[key_idx as usize] {
+                        self.set_v(registry, key_idx);
+                        self.active_key = None;
+                    } else {
+                        increase_program_counter = false
+                    }
+                }
+            }
         }
 
         if increase_program_counter {
             self.increase_program_counter()
+        }
+    }
+    pub fn tick_delay_timer(&mut self) {
+        if self.delay_timer > 0 {
+            self.delay_timer -= 1
+        }
+    }
+    ///if it comes a cross empty memory it will return `Chip8OpCode::Add {registry: 0,value: 0}`
+    pub fn current_op_code(&self) -> Chip8OpCode {
+        //gets the opcode from the next two bytes
+        let opcode = u16::from_be_bytes([
+            self.memory[self.program_counter],
+            self.memory[self.program_counter + 1],
+        ]);
+        // println!("opcode: {opcode:X}");
+
+        match Chip8OpCode::decode(opcode) {
+            Ok(opcode) => opcode,
+            //run a useless opcode
+            Err(UnkownOpCodeErr(0)) => Chip8OpCode::Add {
+                registry: 0,
+                value: 0,
+            },
+
+            Err(UnkownOpCodeErr(e)) => {
+                println!("unkown opcode:{e:X}");
+                Chip8OpCode::Add {
+                    registry: 0,
+                    value: 0,
+                }
+            }
         }
     }
     fn increase_program_counter(&mut self) {
@@ -470,6 +608,9 @@ impl Chip8Emulator {
     }
     fn set_v(&mut self, addr: u8, value: u8) {
         self.v_registers[addr as usize] = value
+    }
+    pub fn set_key(&mut self, index: usize, state: bool) {
+        self.keys[index] = state
     }
 }
 

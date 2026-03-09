@@ -286,7 +286,7 @@ fn test_shr_8xy6() {
 
     chip8.cycle();
     chip8.cycle();
-    
+
     assert_eq!(0x01, chip8.get_v(0)); // 3 >> 1 = 1
     assert_eq!(1, chip8.get_v(0xF)); // LSB was 1, so VF = 1
 }

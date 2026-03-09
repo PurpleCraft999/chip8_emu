@@ -96,15 +96,18 @@ impl Chip8Emulator {
     pub fn get_display(&self) -> &[u8; 2048] {
         &self.display
     }
-    ///makes a chip8 emulator with the necisary items loaded into memory
-    pub const fn init() -> Self {
-        let mut chip8 = Self::new();
+    pub const fn load_font(&mut self) {
         let mut i = 0;
         //done this way due to const
         while i < FONT_SET.len() {
-            chip8.memory[i] = FONT_SET[i];
+            self.memory[i] = FONT_SET[i];
             i += 1;
         }
+    }
+    ///makes a chip8 emulator with the necisary items loaded into memory
+    pub const fn init() -> Self {
+        let mut chip8 = Self::new();
+        chip8.load_font();
 
         chip8
     }
@@ -339,12 +342,12 @@ impl Chip8Emulator {
                 self.index_register += self.get_v(registry) as u16
             }
             Chip8OpCode::SkipIfNotPressed { registry } => {
-                if self.keys[self.get_v(registry) as usize] == false {
+                if !self.keys[self.get_v(registry) as usize] {
                     self.increase_program_counter();
                 }
             }
             Chip8OpCode::SkipIfPressed { registry } => {
-                if self.keys[self.get_v(registry) as usize] == true {
+                if self.keys[self.get_v(registry) as usize] {
                     self.increase_program_counter();
                 }
             }
@@ -377,6 +380,16 @@ impl Chip8Emulator {
                     & value,
             ),
             Chip8OpCode::SetSoundTimer { registry: time } => self.sound_timer = self.get_v(time),
+            Chip8OpCode::LoadFont { registry } => {
+                //very poorly makes sure the font is loaded
+                assert_eq!(self.memory[0], 0xF0);
+                self.index_register = if registry != 0 {
+                    registry as u16 * 5
+                } else {
+                    0
+                }
+            }
+            Chip8OpCode::JumpToSystemAddress { .. }=>()
         }
 
         if increase_program_counter {
@@ -387,10 +400,10 @@ impl Chip8Emulator {
         if self.delay_timer > 0 {
             self.delay_timer -= 1
         }
-        if self.sound_timer>0{
+        if self.sound_timer > 0 {
             //PLAY SOUND
 
-            self.sound_timer-=1
+            self.sound_timer -= 1
         }
     }
     ///if it comes a cross empty memory it will return `Chip8OpCode::Add {registry: 0,value: 0}`
@@ -436,7 +449,11 @@ impl Chip8Emulator {
         self.keys[index] = state
     }
 }
-
+impl Default for Chip8Emulator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 #[path = "../tests/chip8_emulator_test.rs"]
 #[cfg(test)]
 mod chip8_emulator_test;

@@ -5,12 +5,13 @@ use std::{
 };
 
 use chip8_emu::{Chip8Emulator, SCREEN_HEIGHT, SCREEN_WIDTH, chip8::chip8_emulator::KEY_MAP};
-use minifb::{Key,Window, WindowOptions};
+use minifb::{Key, Window, WindowOptions};
 
 fn main() {
-    let mut chip8 = Chip8Emulator::init();
-    chip8.load_game(Path::new("7-beep.ch8")).unwrap();
-    launch_emulator_window(chip8);
+    println!("{:?}",std::mem::discriminant(&chip8_emu::Chip8OpCode::JumpToSystemAddress { address: 0 }))
+    // let mut chip8 = Chip8Emulator::init();
+    // chip8.load_game(Path::new("7-beep.ch8")).unwrap();
+    // launch_emulator_window(chip8);
 }
 fn launch_emulator_window(mut chip8: Chip8Emulator) {
     let scale: usize = 15;

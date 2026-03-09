@@ -138,6 +138,12 @@ pub enum Chip8OpCode {
         registry: u8,
         value: u8,
     },
+    ///Fx29
+    LoadFont {
+        registry: u8,
+    },
+    ///dont even have a way to get it
+    JumpToSystemAddress{address:u16}
 }
 impl Chip8OpCode {
     pub fn decode(opcode: u16) -> Result<Self, UnkownOpCodeErr> {
@@ -159,6 +165,7 @@ impl Chip8OpCode {
             0x0 => match opcode {
                 0xE0 => Ok(Self::ClearScreen),
                 0xEE => Ok(Self::Return),
+                
                 _ => Err(UnkownOpCodeErr(opcode)),
             },
             0x6 => Ok(Self::LoadVRegistry { registry, value }),
@@ -231,9 +238,9 @@ impl Chip8OpCode {
             0xF if registry2 == 1 && n == 5 => Ok(Self::SetDelayTimer { registry }),
             0xF if registry2 == 0 && n == 0xA => Ok(Self::WaitForKey { registry }),
             0xF if registry2 == 1 && n == 8 => Ok(Self::SetSoundTimer { registry }),
+            0xF if registry2 == 2 && n == 9 => Ok(Self::LoadFont { registry }),
             0xB => Ok(Self::JumpPlusV0 { address }),
             0xC => Ok(Self::Random { registry, value }),
-
             _ => Err(UnkownOpCodeErr(opcode)),
         }
     }

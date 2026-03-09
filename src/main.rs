@@ -4,19 +4,18 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chip8_emu::{Chip8Emulator, SCREEN_HEIGHT, SCREEN_WIDTH, chip8::chip8_emulator::KEY_MAP};
+use purple8::{Chip8Emulator, SCREEN_HEIGHT, SCREEN_WIDTH, chip8::chip8_emulator::KEY_MAP};
 use minifb::{Key, Window, WindowOptions};
 
 fn main() {
-    println!("{:?}",std::mem::discriminant(&chip8_emu::Chip8OpCode::JumpToSystemAddress { address: 0 }))
-    // let mut chip8 = Chip8Emulator::init();
-    // chip8.load_game(Path::new("7-beep.ch8")).unwrap();
-    // launch_emulator_window(chip8);
+    let mut chip8 = Chip8Emulator::init();
+    chip8.load_game(Path::new("7-beep.ch8")).unwrap();
+    launch_emulator_window(chip8);
 }
 fn launch_emulator_window(mut chip8: Chip8Emulator) {
     let scale: usize = 15;
-    let fb_width: usize = chip8_emu::SCREEN_WIDTH as usize * scale;
-    let fb_height: usize = chip8_emu::SCREEN_HEIGHT as usize * scale;
+    let fb_width: usize = purple8::SCREEN_WIDTH as usize * scale;
+    let fb_height: usize = purple8::SCREEN_HEIGHT as usize * scale;
 
     let mut window = Window::new(
         "Chip8 Emulator",

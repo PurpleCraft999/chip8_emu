@@ -60,31 +60,37 @@ pub enum Chip8OpCode {
         registry: u8,
         registry2: u8,
     },
+    ///8xy2
     BitAnd {
         registry: u8,
         registry2: u8,
     },
+    ///8xy3
     BitXor {
         registry: u8,
         registry2: u8,
     },
-
+    ///8xy4
     AddReg {
         registry: u8,
         registry2: u8,
     },
+    ///8xy5
     SubReg {
         registry: u8,
         registry2: u8,
     },
+    ///8xy6
     ShiftRight {
         registry: u8,
         registry2: u8,
     },
+    ///8xy7
     SubRegYX {
         registry: u8,
         registry2: u8,
     },
+    ///8xyE
     ShiftLeft {
         registry: u8,
         registry2: u8,
@@ -100,26 +106,33 @@ pub enum Chip8OpCode {
     StoreRegsIntoMem {
         max_registry: u8,
     },
+    ///Fx33
     ///store binary-coded decimal representation of vX to memory at i, i + 1 and i + 2
     StoreVXAsBinary {
         registry: u8,
     },
+    ///Fx1E
     AddAssignI {
         registry: u8,
     },
+    ///ExA1
     SkipIfNotPressed {
         registry: u8,
     },
+    ///Ex9E
     SkipIfPressed {
         registry: u8,
     },
+    ///Fx07
     PutDelayInRegX {
         registry: u8,
     },
+    ///Fx15
     ///sets the delay timer to the value of the register
     SetDelayTimer {
         registry: u8,
     },
+    ///Fx18
     ///sets the sound timer to the value of the register
     SetSoundTimer {
         registry: u8,
@@ -142,6 +155,7 @@ pub enum Chip8OpCode {
     LoadFont {
         registry: u8,
     },
+    ///0x0nnn
     ///dont even have a way to get it
     JumpToSystemAddress{address:u16}
 }
@@ -165,8 +179,9 @@ impl Chip8OpCode {
             0x0 => match opcode {
                 0xE0 => Ok(Self::ClearScreen),
                 0xEE => Ok(Self::Return),
-                
-                _ => Err(UnkownOpCodeErr(opcode)),
+                //this is a blank address
+                0  =>Err(UnkownOpCodeErr(opcode)),
+                _ => Ok(Self::JumpToSystemAddress { address }),
             },
             0x6 => Ok(Self::LoadVRegistry { registry, value }),
             0xA => Ok(Self::LoadIndexRegistry(address)),

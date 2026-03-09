@@ -1,14 +1,18 @@
 use std::{
     path::Path,
+    // thread,
     time::{Duration, Instant},
 };
 
-use chip8_emu::{Chip8Emulator, SCREEN_HEIGHT, SCREEN_WIDTH};
-use minifb::{Key, Window, WindowOptions};
+use chip8_emu::{Chip8Emulator, SCREEN_HEIGHT, SCREEN_WIDTH, chip8::chip8_emulator::KEY_MAP};
+use minifb::{Key,Window, WindowOptions};
 
 fn main() {
     let mut chip8 = Chip8Emulator::init();
-    chip8.load_game(Path::new("6-keypad.ch8")).unwrap();
+    chip8.load_game(Path::new("7-beep.ch8")).unwrap();
+    launch_emulator_window(chip8);
+}
+fn launch_emulator_window(mut chip8: Chip8Emulator) {
     let scale: usize = 15;
     let fb_width: usize = chip8_emu::SCREEN_WIDTH as usize * scale;
     let fb_height: usize = chip8_emu::SCREEN_HEIGHT as usize * scale;
@@ -28,19 +32,18 @@ fn main() {
     let timer_interval = Duration::from_micros(16667);
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        for (i, key) in chip8_emu::KEY_MAP.iter().enumerate() {
+        for (i, key) in KEY_MAP.iter().enumerate() {
             let state = window.is_key_down(*key);
             chip8.set_key(i, state);
         }
 
-        for _ in 0..10 {
+        for _ in 0..320 {
             chip8.cycle();
         }
         if last_timer_update.elapsed() >= timer_interval {
-            chip8.tick_delay_timer();
+            chip8.tick_timers();
             last_timer_update = Instant::now();
         }
-
         if chip8.get_draw_flag() {
             chip8.draw_flag_off();
             for y in 0..SCREEN_HEIGHT as usize {

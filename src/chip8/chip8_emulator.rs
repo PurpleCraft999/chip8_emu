@@ -5,10 +5,8 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-use minifb::Key;
-
 use crate::{Chip8OpCode, SCREEN_HEIGHT, SCREEN_WIDTH, UnkownOpCodeErr};
-
+use winit::keyboard::KeyCode as Key;
 const FONT_SET: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, //0
     0x20, 0x60, 0x20, 0x20, 0x70, //1
@@ -27,24 +25,30 @@ const FONT_SET: [u8; 80] = [
     0xF0, 0x80, 0xF0, 0x80, 0xF0, //E
     0xF0, 0x80, 0xF0, 0x80, 0x80, //F
 ];
-pub const KEY_MAP: [Key; 16] = [
-    Key::Key0,
-    Key::Key1,
-    Key::Key2,
-    Key::Key3,
-    Key::Key4,
-    Key::Key5,
-    Key::Key6,
-    Key::Key7,
-    Key::Key8,
-    Key::Key9,
-    Key::A,
-    Key::B,
-    Key::C,
-    Key::D,
-    Key::E,
-    Key::F,
+const DEFAULT_KEY_MAP: [Key; 16] = [
+    Key::Digit0,
+    Key::Digit1,
+    Key::Digit2,
+    Key::Digit3,
+    Key::Digit4,
+    Key::Digit5,
+    Key::Digit6,
+    Key::Digit7,
+    Key::Digit8,
+    Key::Digit9,
+    Key::KeyA,
+    Key::KeyB,
+    Key::KeyC,
+    Key::KeyD,
+    Key::KeyE,
+    Key::KeyF,
 ];
+/*cave explorer
+    5=w
+    7=a
+    8=s
+    9=d
+*/
 
 pub struct Chip8Emulator {
     memory: [u8; 4096],
@@ -64,6 +68,9 @@ pub struct Chip8Emulator {
     keys: [bool; 16],
     ///only used for WaitForKey (Fx0A)
     active_key: Option<u8>,
+    key_map: [Key; 16],
+    ///has something been loaded into memory
+    has_memory_loaded: bool,
 }
 impl Chip8Emulator {
     ///makes a completely blank chip8 emulator
@@ -84,17 +91,11 @@ impl Chip8Emulator {
             delay_timer: 0,
             draw_flag: false,
             keys: [false; 16],
+            //below here is my stuff and is not strictly neccesary
             active_key: None,
+            key_map: DEFAULT_KEY_MAP,
+            has_memory_loaded: false,
         }
-    }
-    pub fn get_draw_flag(&self) -> bool {
-        self.draw_flag
-    }
-    pub fn draw_flag_off(&mut self) {
-        self.draw_flag = false;
-    }
-    pub fn get_display(&self) -> &[u8; 2048] {
-        &self.display
     }
     pub const fn load_font(&mut self) {
         let mut i = 0;
@@ -122,6 +123,8 @@ impl Chip8Emulator {
         // println!("byte len:{}", bytes.len());
         assert!(bytes.len() <= self.memory.len() - 512);
 
+        self.reset();
+
         for (i, byte) in bytes.iter().enumerate() {
             //0x200 is the start of the useable memory
             self.memory[i + 0x200] = *byte;
@@ -129,16 +132,127 @@ impl Chip8Emulator {
         //the starting location for game memory
         //decimal 512
         self.program_counter = 0x200;
+        self.has_memory_loaded = true;
+    }
+    pub fn get_key_map(&self) -> [Key; 16] {
+        self.key_map
+    }
+    pub fn reset(&mut self) {
+        *self = Chip8Emulator::new();
     }
 
+    pub fn tick_timers(&mut self) {
+        if !self.has_memory_loaded {
+            return;
+        }
+
+        if self.delay_timer > 0 {
+            self.delay_timer -= 1
+        }
+        if self.sound_timer > 0 {
+            //PLAY SOUND
+
+            self.sound_timer -= 1
+        }
+    }
+    ///if it comes a cross empty memory it will return `Chip8OpCode::Add {registry: 0,value: 0}`
+    pub fn current_op_code(&self) -> Chip8OpCode {
+        //gets the opcode from the next two bytes
+        let opcode = u16::from_be_bytes([
+            self.memory[self.program_counter],
+            self.memory[self.program_counter + 1],
+        ]);
+        // println!("opcode: {opcode:X}");
+
+        match Chip8OpCode::decode(opcode) {
+            Ok(opcode) => opcode,
+            //run a useless opcode
+            Err(UnkownOpCodeErr(0)) => Chip8OpCode::Add {
+                registry: 0,
+                value: 0,
+            },
+
+            Err(UnkownOpCodeErr(e)) => {
+                println!("unkown opcode:{e:X}");
+                Chip8OpCode::Add {
+                    registry: 0,
+                    value: 0,
+                }
+            }
+        }
+    }
+    fn increase_program_counter(&mut self) {
+        if !self.has_memory_loaded {
+            return;
+        }
+        self.program_counter += 2
+    }
+    ///gets from the v registry
+    fn get_v(&self, addr: u8) -> u8 {
+        self.v_registers[addr as usize]
+    }
+    fn get_memory(&self, addr: u16) -> u8 {
+        self.memory[addr as usize]
+    }
+    fn set_v(&mut self, addr: u8, value: u8) {
+        if !self.has_memory_loaded {
+            return;
+        }
+        self.v_registers[addr as usize] = value
+    }
+    pub fn set_key(&mut self, index: usize, state: bool) {
+        if !self.has_memory_loaded {
+            return;
+        }
+        self.keys[index] = state
+    }
+    pub fn get_draw_flag(&self) -> bool {
+        self.draw_flag
+    }
+    pub fn done_drawing(&mut self) {
+        self.draw_flag = false;
+    }
+    pub fn get_display(&self) -> &[u8; 2048] {
+        &self.display
+    }
+}
+impl Default for Chip8Emulator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+use std::time::{Instant,Duration};
+pub struct Chip8Clock {
+    last_ran: Instant,
+    speed: Duration,
+}
+impl Chip8Clock {
+    
+    pub fn new() -> Self {
+        Self {
+            last_ran: Instant::now(),
+            speed: Duration::from_micros(16667),
+        }
+    }
+    ///returns if chip8 timers should tick
+    pub fn tick_chip8_timers(&mut self) -> bool {
+        if self.last_ran.elapsed() >= self.speed {
+            // chip8.tick_timers();
+            self.last_ran = Instant::now();
+            return true;
+        }
+        return false;
+    }
+}
+#[path = "../tests/chip8_emulator_test.rs"]
+#[cfg(test)]
+mod chip8_emulator_test;
+impl Chip8Emulator {
     pub fn cycle(&mut self) {
-        //ensures the program counter is always even
-        // if !self.program_counter.is_multiple_of(2) {
-        //     panic!(
-        //         "program_counter is misaligned. value:{}",
-        //         self.program_counter
-        //     )
-        // }
+        //nothing to run
+        if !self.has_memory_loaded {
+            return;
+        }
 
         //this is for the few opcodes that dont want the program counter to increase normally
         let mut increase_program_counter = true;
@@ -389,71 +503,11 @@ impl Chip8Emulator {
                     0
                 }
             }
-            Chip8OpCode::JumpToSystemAddress { .. }=>()
+            Chip8OpCode::JumpToSystemAddress { .. } => (),
         }
 
         if increase_program_counter {
             self.increase_program_counter()
         }
     }
-    pub fn tick_timers(&mut self) {
-        if self.delay_timer > 0 {
-            self.delay_timer -= 1
-        }
-        if self.sound_timer > 0 {
-            //PLAY SOUND
-
-            self.sound_timer -= 1
-        }
-    }
-    ///if it comes a cross empty memory it will return `Chip8OpCode::Add {registry: 0,value: 0}`
-    pub fn current_op_code(&self) -> Chip8OpCode {
-        //gets the opcode from the next two bytes
-        let opcode = u16::from_be_bytes([
-            self.memory[self.program_counter],
-            self.memory[self.program_counter + 1],
-        ]);
-        // println!("opcode: {opcode:X}");
-
-        match Chip8OpCode::decode(opcode) {
-            Ok(opcode) => opcode,
-            //run a useless opcode
-            Err(UnkownOpCodeErr(0)) => Chip8OpCode::Add {
-                registry: 0,
-                value: 0,
-            },
-
-            Err(UnkownOpCodeErr(e)) => {
-                println!("unkown opcode:{e:X}");
-                Chip8OpCode::Add {
-                    registry: 0,
-                    value: 0,
-                }
-            }
-        }
-    }
-    fn increase_program_counter(&mut self) {
-        self.program_counter += 2
-    }
-    ///gets from the v registry
-    fn get_v(&self, addr: u8) -> u8 {
-        self.v_registers[addr as usize]
-    }
-    fn get_memory(&self, addr: u16) -> u8 {
-        self.memory[addr as usize]
-    }
-    fn set_v(&mut self, addr: u8, value: u8) {
-        self.v_registers[addr as usize] = value
-    }
-    pub fn set_key(&mut self, index: usize, state: bool) {
-        self.keys[index] = state
-    }
 }
-impl Default for Chip8Emulator {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-#[path = "../tests/chip8_emulator_test.rs"]
-#[cfg(test)]
-mod chip8_emulator_test;

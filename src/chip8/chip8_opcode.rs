@@ -2,162 +2,81 @@ pub enum Chip8OpCode {
     ///0x00E0
     ClearScreen,
     ///0x06        
-    LoadVRegistry {
-        registry: u8,
-        value: u8,
-    },
+    LoadVRegistry { registry: u8, value: u8 },
     ///0xA
     LoadIndexRegistry(u16),
     ///0xD
-    Display {
-        x: u8,
-        y: u8,
-        n: u8,
-    },
+    Display { x: u8, y: u8, n: u8 },
     ///0x1
-    Jump {
-        address: u16,
-    },
+    Jump { address: u16 },
     ///0x7
-    Add {
-        registry: u8,
-        value: u8,
-    },
+    Add { registry: u8, value: u8 },
     ///0x3
-    SkipIfEqValue {
-        registry: u8,
-        value: u8,
-    },
+    SkipIfEqValue { registry: u8, value: u8 },
     ///0x4
-    SkipIfNotEqValue {
-        registry: u8,
-        value: u8,
-    },
+    SkipIfNotEqValue { registry: u8, value: u8 },
     ///0x5xy0
-    SkipIfRegEq {
-        registry: u8,
-        registry2: u8,
-    },
+    SkipIfRegEq { registry: u8, registry2: u8 },
     ///0x9xy0
-    SkipIfRegNotEq {
-        registry: u8,
-        registry2: u8,
-    },
+    SkipIfRegNotEq { registry: u8, registry2: u8 },
     ///0x2
-    Call {
-        address: u16,
-    },
+    Call { address: u16 },
     ///0x00EE
     Return,
     ///8ny0
-    SetRegEq {
-        registry: u8,
-        registry2: u8,
-    },
+    SetRegEq { registry: u8, registry2: u8 },
 
     ///8xy1
-    BitOr {
-        registry: u8,
-        registry2: u8,
-    },
+    BitOr { registry: u8, registry2: u8 },
     ///8xy2
-    BitAnd {
-        registry: u8,
-        registry2: u8,
-    },
+    BitAnd { registry: u8, registry2: u8 },
     ///8xy3
-    BitXor {
-        registry: u8,
-        registry2: u8,
-    },
+    BitXor { registry: u8, registry2: u8 },
     ///8xy4
-    AddReg {
-        registry: u8,
-        registry2: u8,
-    },
+    AddReg { registry: u8, registry2: u8 },
     ///8xy5
-    SubReg {
-        registry: u8,
-        registry2: u8,
-    },
+    SubReg { registry: u8, registry2: u8 },
     ///8xy6
-    ShiftRight {
-        registry: u8,
-        registry2: u8,
-    },
+    ShiftRight { registry: u8, registry2: u8 },
     ///8xy7
-    SubRegYX {
-        registry: u8,
-        registry2: u8,
-    },
+    SubRegYX { registry: u8, registry2: u8 },
     ///8xyE
-    ShiftLeft {
-        registry: u8,
-        registry2: u8,
-    },
+    ShiftLeft { registry: u8, registry2: u8 },
     //below here needs tests
     /// Fx65
     ///loads from memory starting from i into registries including max_registry
-    LoadMemIntoRegs {
-        max_registry: u8,
-    },
+    LoadMemIntoRegs { max_registry: u8 },
     ///Fx55
     ///stores the registries 0..=max_registry in memory starting from i
-    StoreRegsIntoMem {
-        max_registry: u8,
-    },
+    StoreRegsIntoMem { max_registry: u8 },
     ///Fx33
     ///store binary-coded decimal representation of vX to memory at i, i + 1 and i + 2
-    StoreVXAsBinary {
-        registry: u8,
-    },
+    StoreVXAsBinary { registry: u8 },
     ///Fx1E
-    AddAssignI {
-        registry: u8,
-    },
+    AddAssignI { registry: u8 },
     ///ExA1
-    SkipIfNotPressed {
-        registry: u8,
-    },
+    SkipIfNotPressed { registry: u8 },
     ///Ex9E
-    SkipIfPressed {
-        registry: u8,
-    },
+    SkipIfPressed { registry: u8 },
     ///Fx07
-    PutDelayInRegX {
-        registry: u8,
-    },
+    PutDelayInRegX { registry: u8 },
     ///Fx15
     ///sets the delay timer to the value of the register
-    SetDelayTimer {
-        registry: u8,
-    },
+    SetDelayTimer { registry: u8 },
     ///Fx18
     ///sets the sound timer to the value of the register
-    SetSoundTimer {
-        registry: u8,
-    },
+    SetSoundTimer { registry: u8 },
     ///Fx0A
     ///waits for a key press then stores it in the registey
-    WaitForKey {
-        registry: u8,
-    },
+    WaitForKey { registry: u8 },
     ///0xB
-    JumpPlusV0 {
-        address: u16,
-    },
+    JumpPlusV0 { address: u16 },
     ///0xC
-    Random {
-        registry: u8,
-        value: u8,
-    },
+    Random { registry: u8, value: u8 },
     ///Fx29
-    LoadFont {
-        registry: u8,
-    },
+    LoadFont { registry: u8 },
     ///0x0nnn
-    ///dont even have a way to get it
-    JumpToSystemAddress{address:u16}
+    JumpToSystemAddress { address: u16 },
 }
 impl Chip8OpCode {
     pub fn decode(opcode: u16) -> Result<Self, UnkownOpCodeErr> {
@@ -180,7 +99,7 @@ impl Chip8OpCode {
                 0xE0 => Ok(Self::ClearScreen),
                 0xEE => Ok(Self::Return),
                 //this is a blank address
-                0  =>Err(UnkownOpCodeErr(opcode)),
+                0 => Err(UnkownOpCodeErr(opcode)),
                 _ => Ok(Self::JumpToSystemAddress { address }),
             },
             0x6 => Ok(Self::LoadVRegistry { registry, value }),

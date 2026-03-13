@@ -2,11 +2,15 @@ use std::{
     fs::File,
     io::{self, Read},
     path::Path,
+    sync::OnceLock,
     time::UNIX_EPOCH,
 };
 
-use crate::{Chip8OpCode, SCREEN_HEIGHT, SCREEN_WIDTH, UnkownOpCodeErr};
-use winit::keyboard::KeyCode as Key;
+use crate::{
+    Chip8OpCode, SCREEN_HEIGHT, SCREEN_WIDTH, UnkownOpCodeErr,
+    chip8::chip8_emulator_helpers::Chip8Audio,
+};
+
 const FONT_SET: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, //0
     0x20, 0x60, 0x20, 0x20, 0x70, //1
@@ -25,23 +29,40 @@ const FONT_SET: [u8; 80] = [
     0xF0, 0x80, 0xF0, 0x80, 0xF0, //E
     0xF0, 0x80, 0xF0, 0x80, 0x80, //F
 ];
+// #[derive(Debug,Clone, Copy)]
+// pub enum Key{
+//     Zero,
+//     One,
+//     Two,
+//     Three,
+//     Four,
+//     Five,
+//     Six,
+//     Seven,
+//     Eight,
+//     Nine,
+//     A,B,C,D,E,F
+
+// }
+
+use eframe::egui::Key;
 const DEFAULT_KEY_MAP: [Key; 16] = [
-    Key::Digit0,
-    Key::Digit1,
-    Key::Digit2,
-    Key::Digit3,
-    Key::Digit4,
-    Key::Digit5,
-    Key::Digit6,
-    Key::Digit7,
-    Key::Digit8,
-    Key::Digit9,
-    Key::KeyA,
-    Key::KeyB,
-    Key::KeyC,
-    Key::KeyD,
-    Key::KeyE,
-    Key::KeyF,
+    Key::Num0,
+    Key::Num1,
+    Key::Num2,
+    Key::Num3,
+    Key::Num4,
+    Key::Num5,
+    Key::Num6,
+    Key::Num7,
+    Key::Num8,
+    Key::Num9,
+    Key::A,
+    Key::B,
+    Key::C,
+    Key::D,
+    Key::E,
+    Key::F,
 ];
 /*cave explorer
     5=w
@@ -49,6 +70,7 @@ const DEFAULT_KEY_MAP: [Key; 16] = [
     8=s
     9=d
 */
+// use rodio::
 
 pub struct Chip8Emulator {
     memory: [u8; 4096],
@@ -66,11 +88,13 @@ pub struct Chip8Emulator {
     draw_flag: bool,
     ///holds if that key is pressed or not
     keys: [bool; 16],
+    //other stuff
     ///only used for WaitForKey (Fx0A)
     active_key: Option<u8>,
     key_map: [Key; 16],
     ///has something been loaded into memory
     has_memory_loaded: bool,
+    audio_player: OnceLock<Chip8Audio>,
 }
 impl Chip8Emulator {
     ///makes a completely blank chip8 emulator
@@ -95,6 +119,7 @@ impl Chip8Emulator {
             active_key: None,
             key_map: DEFAULT_KEY_MAP,
             has_memory_loaded: false,
+            audio_player: OnceLock::new(),
         }
     }
     pub const fn load_font(&mut self) {
@@ -150,9 +175,9 @@ impl Chip8Emulator {
             self.delay_timer -= 1
         }
         if self.sound_timer > 0 {
-            //PLAY SOUND
-
             self.sound_timer -= 1
+        } else {
+            self.get_audio_player().pause();
         }
     }
     ///if it comes a cross empty memory it will return `Chip8OpCode::Add {registry: 0,value: 0}`
@@ -215,35 +240,17 @@ impl Chip8Emulator {
     pub fn get_display(&self) -> &[u8; 2048] {
         &self.display
     }
+    fn get_audio_player(&mut self) -> &Chip8Audio {
+        self.audio_player.get_or_init(Chip8Audio::new)
+    }
 }
+
 impl Default for Chip8Emulator {
     fn default() -> Self {
         Self::new()
     }
 }
-use std::time::{Instant,Duration};
-pub struct Chip8Clock {
-    last_ran: Instant,
-    speed: Duration,
-}
-impl Chip8Clock {
-    
-    pub fn new() -> Self {
-        Self {
-            last_ran: Instant::now(),
-            speed: Duration::from_micros(16667),
-        }
-    }
-    ///returns if chip8 timers should tick
-    pub fn tick_chip8_timers(&mut self) -> bool {
-        if self.last_ran.elapsed() >= self.speed {
-            // chip8.tick_timers();
-            self.last_ran = Instant::now();
-            return true;
-        }
-        return false;
-    }
-}
+
 #[path = "../tests/chip8_emulator_test.rs"]
 #[cfg(test)]
 mod chip8_emulator_test;
@@ -493,7 +500,10 @@ impl Chip8Emulator {
                     .as_micros() as u8
                     & value,
             ),
-            Chip8OpCode::SetSoundTimer { registry: time } => self.sound_timer = self.get_v(time),
+            Chip8OpCode::SetSoundTimer { registry: time } => {
+                self.sound_timer = self.get_v(time);
+                self.get_audio_player().play();
+            }
             Chip8OpCode::LoadFont { registry } => {
                 //very poorly makes sure the font is loaded
                 assert_eq!(self.memory[0], 0xF0);

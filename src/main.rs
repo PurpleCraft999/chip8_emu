@@ -1,15 +1,25 @@
 mod emulator_window;
-use winit::event_loop::EventLoop;
 
-use crate::emulator_window::main_window::EmulatorWindow;
+use eframe::{
+    NativeOptions,
+    egui::{Vec2, ViewportBuilder},
+};
 
+use crate::emulator_window::main_window::{EmulatorWindow, MENU_BAR_HEIGHT};
 
 fn main() {
-    
-    let event_loop = EventLoop::new().unwrap();
-    event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
-    event_loop.run_app(&mut EmulatorWindow::new()).unwrap();
+    let viewport =
+        ViewportBuilder::default().with_inner_size(Vec2::new(620., (32. * 10.) + MENU_BAR_HEIGHT));
 
+    let options = NativeOptions {
+        viewport,
+        ..Default::default()
+    };
+
+    eframe::run_native(
+        "Purple8",
+        options,
+        Box::new(|cc| Ok(Box::new(EmulatorWindow::new(cc)))),
+    )
+    .unwrap();
 }
-
-

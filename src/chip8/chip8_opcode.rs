@@ -1,7 +1,7 @@
 pub enum Chip8OpCode {
     ///0x00E0
     ClearScreen,
-    ///0x06        
+    ///0x6        
     LoadVRegistry { registry: u8, value: u8 },
     ///0xA
     LoadIndexRegistry(u16),

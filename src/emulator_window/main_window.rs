@@ -1,121 +1,137 @@
-use std::sync::Arc;
+use eframe::egui::{
+    self, Color32, ColorImage, MenuBar, Slider, TextureHandle, TextureOptions, TopBottomPanel,
+    Widget, containers::menu::MenuConfig,
+};
+use purple8::{
+    Chip8Emulator, SCREEN_HEIGHT, SCREEN_WIDTH, chip8::chip8_emulator_helpers::Chip8Clock,
+};
 
-use pixels::{Pixels, SurfaceTexture};
-use purple8::{Chip8Emulator, SCREEN_HEIGHT, SCREEN_WIDTH, chip8::chip8_emulator::Chip8Clock};
-use winit::{application::ApplicationHandler, dpi::{PhysicalSize, Size}, event::WindowEvent, event_loop::ActiveEventLoop, window::Window};
-
-pub struct EmulatorWindow<'win> {
-    window: Option<Arc<Window>>,
-    pixels: Option<Pixels<'win>>,
-    chip8: Chip8Emulator,
-    clock: Chip8Clock,
+struct EmulatorSettings {
+    cycle_speed: u16,
+}
+impl EmulatorSettings {
+    fn new() -> Self {
+        Self { cycle_speed: 300 }
+    }
 }
 
-impl EmulatorWindow<'_> {
-    pub fn new() -> Self {
+pub struct EmulatorWindow {
+    chip8_emulator: Chip8Emulator,
+    chip8_clock: Chip8Clock,
+    chip8_screen: TextureHandle,
+    settings: EmulatorSettings,
+}
+
+impl EmulatorWindow {
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         Self {
-            window: None,
-            pixels: None,
-            chip8: Chip8Emulator::init(),
-            clock: Chip8Clock::new(),
-        }
-    }
-    fn init_window(&mut self, event_loop: &ActiveEventLoop){
-        let scale = 15;
-        let window_width = purple8::SCREEN_WIDTH as u32 * scale;
-        let window_height = purple8::SCREEN_HEIGHT as u32 * scale;
-        let window = Window::default_attributes()
-            .with_title("Purple8")
-            .with_inner_size(Size::Physical(PhysicalSize::new(
-                window_width,
-                window_height,
-            ))).with_visible(false);
-        
-        let window = Arc::new(event_loop.create_window(window).unwrap());
-        
-
-        self.window = Some(window.clone());
-        let pixels = Pixels::new(
-            SCREEN_WIDTH as u32,
-            SCREEN_HEIGHT as u32,
-            SurfaceTexture::new(window_width, window_height, window),
-        )
-        .unwrap();
-        self.pixels = Some(pixels);
-    }
-    fn pixels_render(&mut self){
-        if let Some(pixels) = &mut self.pixels {
-            if self.chip8.get_draw_flag() {
-                self.chip8.done_drawing();
-                for (i, pixel) in self.chip8.get_display().iter().enumerate() {
-                    let color = if *pixel == 1 {
-                        [0xff, 0xff, 0xff, 0xff]
-                    } else {
-                        [0x00, 0x00, 0x00, 0xff]
-                    };
-
-                    let slice_start = i * 4;
-                    pixels.frame_mut()[slice_start..slice_start + 4]
-                        .copy_from_slice(&color);
-                }
-            }
-
-            if let Err(e) =  pixels.render(){
-                panic!("{e}")
-            }
+            chip8_emulator: Chip8Emulator::init(),
+            chip8_clock: Chip8Clock::new(),
+            chip8_screen: cc.egui_ctx.load_texture(
+                "chip8_screen",
+                ColorImage::filled(
+                    [SCREEN_WIDTH as usize, SCREEN_HEIGHT as usize],
+                    Color32::BLACK,
+                ),
+                TextureOptions::NEAREST,
+            ),
+            settings: EmulatorSettings::new(),
         }
     }
 
-}
-impl ApplicationHandler for EmulatorWindow<'_> {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.is_none() {
-            self.init_window(event_loop);
+    fn chip8_cycle(&mut self) {
+        for _ in 0..self.settings.cycle_speed {
+            self.chip8_emulator.cycle();
+        }
+        if self.chip8_clock.tick_chip8_timers() {
+            self.chip8_emulator.tick_timers();
         }
     }
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _window_id: winit::window::WindowId,
-        event: winit::event::WindowEvent,
-    ) {
-        match event {
-            WindowEvent::CloseRequested => {
-                event_loop.exit();
-            }
-            WindowEvent::RedrawRequested => {
-                self.pixels_render();
+    fn chip8_render(&mut self) {
+        let display = self.chip8_emulator.get_display();
+        let mut pixels = vec![0u8; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize * 4];
 
-            }
-            WindowEvent::KeyboardInput { event, .. } => {
-                for (i, key) in self.chip8.get_key_map().iter().enumerate() {
-                    if event.physical_key == *key {
-                        self.chip8.set_key(i, event.state.is_pressed());
-                    }
-                }
-            }
-            WindowEvent::DroppedFile(path)=>self.chip8.load_game(&path).unwrap(),
-            WindowEvent::Resized(size)=>self.pixels.as_mut().unwrap().resize_surface(size.width, size.height).unwrap(),
-            _ => (),
+        for (i, &pixel) in display.iter().enumerate() {
+            let color: u8 = if pixel == 1 { 255 } else { 0 };
+            pixels[i * 4] = color; // R
+            pixels[i * 4 + 1] = color; // G
+            pixels[i * 4 + 2] = color; // B
+            pixels[i * 4 + 3] = 255; // A
         }
+
+        let image = egui::ColorImage::from_rgba_unmultiplied(
+            [SCREEN_WIDTH as usize, SCREEN_HEIGHT as usize],
+            &pixels,
+        );
+        self.chip8_screen.set(image, TextureOptions::NEAREST);
+
+        self.chip8_emulator.done_drawing();
     }
-
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(window) = &self.window {
-            window.set_visible(true);
-            for _ in 0..320 {
-                self.chip8.cycle();
-            }
-            if self.clock.tick_chip8_timers() {
-                self.chip8.tick_timers();
-            }
-
-            if self.chip8.get_draw_flag() {
-                window.request_redraw();
-            }
-        }
-    }
-    
-
 }
 
+impl eframe::App for EmulatorWindow {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        ctx.request_repaint();
+
+        self.chip8_cycle();
+
+        ctx.input(|i| {
+            for (index, key) in self.chip8_emulator.get_key_map().iter().enumerate() {
+                self.chip8_emulator.set_key(index, i.key_down(*key));
+            }
+
+            let droped_files = &i.raw.dropped_files;
+
+            if let Some(file) = &droped_files.first()
+                && let Some(path) = &file.path
+            {
+                let _ = self.chip8_emulator.load_game(path);
+            }
+        });
+        if self.chip8_emulator.get_draw_flag() {
+            self.chip8_render();
+        }
+
+        TopBottomPanel::top("control bar")
+            .exact_height(MENU_BAR_HEIGHT)
+            .show(ctx, |ui| {
+                MenuBar::new()
+                    .config(
+                        MenuConfig::new().close_behavior(egui::PopupCloseBehavior::CloseOnClick),
+                    )
+                    .ui(ui, |ui| {
+                        ui.menu_button("file", |ui| {
+                            if ui.button("Load").clicked()
+                                && let Some(path) = rfd::FileDialog::new()
+                                    .set_title("Chip8 game")
+                                    .add_filter("ch8 files", &["ch8"])
+                                    .pick_file()
+                            {
+                                self.chip8_emulator.load_game(&path).unwrap();
+                            }
+                            //  if ui.button("play sound").clicked(){
+                            //     self.chip8_emulator.load_bytes_into_memory(&[0x60,0x03,0xF0,0x18,0x12,0x04]);
+                            //  }
+                            //  0x204
+                        });
+                        ui.menu_button("settings", |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label("emulation speed");
+                                Slider::new(&mut self.settings.cycle_speed, 0..=1000).ui(ui);
+                            });
+                            ui.menu_button("key binds", |_| {
+                                // ui.
+                            })
+                        });
+                    })
+            });
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let image = egui::Image::new(&self.chip8_screen);
+            ui.add(image.fit_to_exact_size(ui.available_size()));
+        });
+
+        self.chip8_emulator.done_drawing();
+    }
+}
+pub(crate) const MENU_BAR_HEIGHT: f32 = 25.;

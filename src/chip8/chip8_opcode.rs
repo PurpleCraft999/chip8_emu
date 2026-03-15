@@ -42,7 +42,6 @@ pub enum Chip8OpCode {
     SubRegYX { registry: u8, registry2: u8 },
     ///8xyE
     ShiftLeft { registry: u8, registry2: u8 },
-    //below here needs tests
     /// Fx65
     ///loads from memory starting from i into registries including max_registry
     LoadMemIntoRegs { max_registry: u8 },
@@ -74,7 +73,7 @@ pub enum Chip8OpCode {
     ///0xC
     Random { registry: u8, value: u8 },
     ///Fx29
-    LoadFont { registry: u8 },
+    GetFontStart { registry: u8 },
     ///0x0nnn
     JumpToSystemAddress { address: u16 },
 }
@@ -172,7 +171,7 @@ impl Chip8OpCode {
             0xF if registry2 == 1 && n == 5 => Ok(Self::SetDelayTimer { registry }),
             0xF if registry2 == 0 && n == 0xA => Ok(Self::WaitForKey { registry }),
             0xF if registry2 == 1 && n == 8 => Ok(Self::SetSoundTimer { registry }),
-            0xF if registry2 == 2 && n == 9 => Ok(Self::LoadFont { registry }),
+            0xF if registry2 == 2 && n == 9 => Ok(Self::GetFontStart { registry }),
             0xB => Ok(Self::JumpPlusV0 { address }),
             0xC => Ok(Self::Random { registry, value }),
             _ => Err(UnkownOpCodeErr(opcode)),

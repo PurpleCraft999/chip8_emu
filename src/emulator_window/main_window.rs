@@ -1,6 +1,6 @@
 use eframe::egui::{
-    self, Color32, ColorImage, MenuBar, Slider, TextureHandle, TextureOptions, TopBottomPanel,
-    Widget, containers::menu::MenuConfig,
+    self, Color32, ColorImage, Context, Key, MenuBar, ScrollArea, Slider, TextEdit, TextureHandle,
+    TextureOptions, TopBottomPanel, Widget, Window, containers::menu::MenuConfig,
 };
 use purple8::{
     Chip8Emulator, SCREEN_HEIGHT, SCREEN_WIDTH, chip8::chip8_emulator_helpers::Chip8Clock,
@@ -8,12 +8,36 @@ use purple8::{
 
 struct EmulatorSettings {
     cycle_speed: u16,
+    key_map: [Key; 16],
+    key_binds_window_open: bool,
 }
-impl EmulatorSettings {
-    fn new() -> Self {
-        Self { cycle_speed: 300 }
+impl Default for EmulatorSettings {
+    fn default() -> Self {
+        Self {
+            cycle_speed: 300,
+            key_binds_window_open: false,
+            key_map: DEFAULT_KEY_MAP,
+        }
     }
 }
+const DEFAULT_KEY_MAP: [Key; 16] = [
+    Key::Num0,
+    Key::Num1,
+    Key::Num2,
+    Key::Num3,
+    Key::Num4,
+    Key::Num5,
+    Key::Num6,
+    Key::Num7,
+    Key::Num8,
+    Key::Num9,
+    Key::A,
+    Key::B,
+    Key::C,
+    Key::D,
+    Key::E,
+    Key::F,
+];
 
 pub struct EmulatorWindow {
     chip8_emulator: Chip8Emulator,
@@ -35,7 +59,7 @@ impl EmulatorWindow {
                 ),
                 TextureOptions::NEAREST,
             ),
-            settings: EmulatorSettings::new(),
+            settings: EmulatorSettings::default(),
         }
     }
 
@@ -67,6 +91,33 @@ impl EmulatorWindow {
 
         self.chip8_emulator.done_drawing();
     }
+    fn key_binds_window(&mut self, ctx: &Context) {
+        Window::new("Key Binds")
+            .collapsible(false)
+            .default_width(30.)
+            .open(&mut self.settings.key_binds_window_open)
+            .show(ctx, |ui| {
+                ScrollArea::vertical().show(ui, |ui| {
+                    for (i, key) in self.settings.key_map.iter_mut().enumerate() {
+                        let mut key_name = key.name().to_string();
+                        if *key == Key::Space {
+                            key_name = "".to_string();
+                        }
+                        TextEdit::singleline(&mut key_name)
+                            .hint_text(format!("key:{i:X}"))
+                            .char_limit(1)
+                            .ui(ui);
+                        if let Some(new_key) = Key::from_name(&key_name) {
+                            *key = new_key
+                        } else if key_name.is_empty() {
+                            *key = Key::Space
+                        } else {
+                            println!("could not set key")
+                        }
+                    }
+                });
+            });
+    }
 }
 
 impl eframe::App for EmulatorWindow {
@@ -75,12 +126,12 @@ impl eframe::App for EmulatorWindow {
 
         self.chip8_cycle();
 
-        ctx.input(|i| {
-            for (index, key) in self.chip8_emulator.get_key_map().iter().enumerate() {
-                self.chip8_emulator.set_key(index, i.key_down(*key));
+        ctx.input(|input| {
+            for (index, key) in self.settings.key_map.iter().enumerate() {
+                self.chip8_emulator.set_key(index, input.key_down(*key));
             }
 
-            let droped_files = &i.raw.dropped_files;
+            let droped_files = &input.raw.dropped_files;
 
             if let Some(file) = &droped_files.first()
                 && let Some(path) = &file.path
@@ -119,12 +170,13 @@ impl eframe::App for EmulatorWindow {
                                 ui.label("emulation speed");
                                 Slider::new(&mut self.settings.cycle_speed, 0..=1000).ui(ui);
                             });
-                            ui.menu_button("key binds", |_| {
-                                // ui.
-                            })
+                            if ui.button("KeyBinds").clicked() {
+                                self.settings.key_binds_window_open = true;
+                            }
                         });
                     })
             });
+        self.key_binds_window(ctx);
 
         egui::CentralPanel::default().show(ctx, |ui| {
             let image = egui::Image::new(&self.chip8_screen);

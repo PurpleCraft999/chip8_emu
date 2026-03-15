@@ -2,7 +2,6 @@ use std::{
     fs::File,
     io::{self, Read},
     path::Path,
-    sync::OnceLock,
     time::UNIX_EPOCH,
 };
 
@@ -29,48 +28,13 @@ const FONT_SET: [u8; 80] = [
     0xF0, 0x80, 0xF0, 0x80, 0xF0, //E
     0xF0, 0x80, 0xF0, 0x80, 0x80, //F
 ];
-// #[derive(Debug,Clone, Copy)]
-// pub enum Key{
-//     Zero,
-//     One,
-//     Two,
-//     Three,
-//     Four,
-//     Five,
-//     Six,
-//     Seven,
-//     Eight,
-//     Nine,
-//     A,B,C,D,E,F
 
-// }
-
-use eframe::egui::Key;
-const DEFAULT_KEY_MAP: [Key; 16] = [
-    Key::Num0,
-    Key::Num1,
-    Key::Num2,
-    Key::Num3,
-    Key::Num4,
-    Key::Num5,
-    Key::Num6,
-    Key::Num7,
-    Key::Num8,
-    Key::Num9,
-    Key::A,
-    Key::B,
-    Key::C,
-    Key::D,
-    Key::E,
-    Key::F,
-];
 /*cave explorer
     5=w
     7=a
     8=s
     9=d
 */
-// use rodio::
 
 pub struct Chip8Emulator {
     memory: [u8; 4096],
@@ -86,19 +50,18 @@ pub struct Chip8Emulator {
     delay_timer: u8,
     sound_timer: u8,
     draw_flag: bool,
+    audio_player: Chip8Audio,
     ///holds if that key is pressed or not
     keys: [bool; 16],
-    //other stuff
+    //below here is my stuff and is not strictly neccesary
     ///only used for WaitForKey (Fx0A)
     active_key: Option<u8>,
-    key_map: [Key; 16],
     ///has something been loaded into memory
     has_memory_loaded: bool,
-    audio_player: OnceLock<Chip8Audio>,
 }
 impl Chip8Emulator {
     ///makes a completely blank chip8 emulator
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             //all the memory the emulator needs
             memory: [0; 4096],
@@ -115,23 +78,18 @@ impl Chip8Emulator {
             delay_timer: 0,
             draw_flag: false,
             keys: [false; 16],
-            //below here is my stuff and is not strictly neccesary
+            audio_player: Chip8Audio::new(),
             active_key: None,
-            key_map: DEFAULT_KEY_MAP,
             has_memory_loaded: false,
-            audio_player: OnceLock::new(),
         }
     }
-    pub const fn load_font(&mut self) {
-        let mut i = 0;
-        //done this way due to const
-        while i < FONT_SET.len() {
-            self.memory[i] = FONT_SET[i];
-            i += 1;
+    pub fn load_font(&mut self) {
+        for (i, byte) in FONT_SET.iter().enumerate() {
+            self.memory[i] = *byte
         }
     }
     ///makes a chip8 emulator with the necisary items loaded into memory
-    pub const fn init() -> Self {
+    pub fn init() -> Self {
         let mut chip8 = Self::new();
         chip8.load_font();
 
@@ -159,9 +117,7 @@ impl Chip8Emulator {
         self.program_counter = 0x200;
         self.has_memory_loaded = true;
     }
-    pub fn get_key_map(&self) -> [Key; 16] {
-        self.key_map
-    }
+
     pub fn reset(&mut self) {
         *self = Chip8Emulator::new();
     }
@@ -177,7 +133,7 @@ impl Chip8Emulator {
         if self.sound_timer > 0 {
             self.sound_timer -= 1
         } else {
-            self.get_audio_player().pause();
+            self.audio_player.pause();
         }
     }
     ///if it comes a cross empty memory it will return `Chip8OpCode::Add {registry: 0,value: 0}`
@@ -187,7 +143,7 @@ impl Chip8Emulator {
             self.memory[self.program_counter],
             self.memory[self.program_counter + 1],
         ]);
-        // println!("opcode: {opcode:X}");
+        println!("opcode: {opcode:X}");
 
         match Chip8OpCode::decode(opcode) {
             Ok(opcode) => opcode,
@@ -240,9 +196,6 @@ impl Chip8Emulator {
     pub fn get_display(&self) -> &[u8; 2048] {
         &self.display
     }
-    fn get_audio_player(&mut self) -> &Chip8Audio {
-        self.audio_player.get_or_init(Chip8Audio::new)
-    }
 }
 
 impl Default for Chip8Emulator {
@@ -251,9 +204,10 @@ impl Default for Chip8Emulator {
     }
 }
 
-#[path = "../tests/chip8_emulator_test.rs"]
+#[path = "../tests/chip8_emulator_opcode_tests.rs"]
 #[cfg(test)]
-mod chip8_emulator_test;
+mod chip8_emulator_opcode_tests;
+
 impl Chip8Emulator {
     pub fn cycle(&mut self) {
         //nothing to run
@@ -502,18 +456,16 @@ impl Chip8Emulator {
             ),
             Chip8OpCode::SetSoundTimer { registry: time } => {
                 self.sound_timer = self.get_v(time);
-                self.get_audio_player().play();
+                self.audio_player.play();
             }
-            Chip8OpCode::LoadFont { registry } => {
-                //very poorly makes sure the font is loaded
-                assert_eq!(self.memory[0], 0xF0);
-                self.index_register = if registry != 0 {
-                    registry as u16 * 5
-                } else {
-                    0
+            Chip8OpCode::GetFontStart { registry } => {
+                //load font if not loaded
+                if self.memory[0] != 0xF0 {
+                    self.load_font();
                 }
+                self.index_register = registry as u16 * 5;
             }
-            Chip8OpCode::JumpToSystemAddress { .. } => (),
+            Chip8OpCode::JumpToSystemAddress { .. } => println!("unsuported operation 0x0nnn"),
         }
 
         if increase_program_counter {

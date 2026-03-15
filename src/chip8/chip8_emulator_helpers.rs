@@ -6,6 +6,7 @@ pub struct Chip8Clock {
     speed: Duration,
 }
 impl Chip8Clock {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             last_ran: Instant::now(),
@@ -29,11 +30,11 @@ pub(crate) struct Chip8Audio {
 }
 impl Chip8Audio {
     pub fn new() -> Self {
-        let mixer = rodio::DeviceSinkBuilder::open_default_sink().unwrap();
+        let mut mixer = rodio::DeviceSinkBuilder::open_default_sink().unwrap();
+        mixer.log_on_drop(false);
         let player = Player::connect_new(mixer.mixer());
+
         player.set_volume(0.01);
-        let sound = SquareWave::new(880.);
-        player.append(sound);
 
         Self { player, mixer }
     }
@@ -41,9 +42,10 @@ impl Chip8Audio {
         self.player.append(source);
     }
     pub fn pause(&self) {
-        self.player.pause();
+        self.player.stop();
     }
     pub fn play(&self) {
-        self.player.play();
+        let sound = SquareWave::new(880.);
+        self.player.append(sound);
     }
 }

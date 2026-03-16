@@ -143,7 +143,7 @@ impl Chip8Emulator {
             self.memory[self.program_counter],
             self.memory[self.program_counter + 1],
         ]);
-        println!("opcode: {opcode:X}");
+        // println!("opcode: {opcode:X}");
 
         match Chip8OpCode::decode(opcode) {
             Ok(opcode) => opcode,

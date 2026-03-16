@@ -2,17 +2,21 @@ mod emulator_window;
 
 use eframe::{
     NativeOptions,
-    egui::{Vec2, ViewportBuilder},
+    egui::{IconData, ViewportBuilder, vec2},
 };
 
 use crate::emulator_window::main_window::{EmulatorWindow, MENU_BAR_HEIGHT};
 
 fn main() {
+    let window_size = vec2(620., 310. + MENU_BAR_HEIGHT);
     let viewport = ViewportBuilder::default()
-        .with_inner_size(Vec2::new(620., (32. * 10.) + MENU_BAR_HEIGHT + 20.));
+        .with_inner_size(window_size)
+        .with_min_inner_size(window_size)
+        .with_icon(IconData::default());
 
     let options = NativeOptions {
         viewport,
+
         ..Default::default()
     };
 

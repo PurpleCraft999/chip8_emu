@@ -1,6 +1,7 @@
 use eframe::egui::{
-    self, Color32, ColorImage, Context, Key, MenuBar, ScrollArea, Slider, TextEdit, TextureHandle,
-    TextureOptions, TopBottomPanel, Widget, Window, containers::menu::MenuConfig,
+    self, Color32, ColorImage, Context, Frame, Key, MenuBar, Pos2, Rect, ScrollArea, Slider,
+    TextEdit, TextureHandle, TextureOptions, TopBottomPanel, Widget, Window,
+    containers::menu::MenuConfig, vec2,
 };
 use purple8::{
     Chip8Emulator, SCREEN_HEIGHT, SCREEN_WIDTH, chip8::chip8_emulator_helpers::Chip8Clock,
@@ -73,20 +74,8 @@ impl EmulatorWindow {
     }
     fn chip8_render(&mut self) {
         let display = self.chip8_emulator.get_display();
-        let mut pixels = vec![0u8; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize * 4];
 
-        for (i, &pixel) in display.iter().enumerate() {
-            let color: u8 = if pixel == 1 { 255 } else { 0 };
-            pixels[i * 4] = color; // R
-            pixels[i * 4 + 1] = color; // G
-            pixels[i * 4 + 2] = color; // B
-            pixels[i * 4 + 3] = 255; // A
-        }
-
-        let image = egui::ColorImage::from_rgba_unmultiplied(
-            [SCREEN_WIDTH as usize, SCREEN_HEIGHT as usize],
-            &pixels,
-        );
+        let image = image_from_chip8_display(display);
         self.chip8_screen.set(image, TextureOptions::NEAREST);
 
         self.chip8_emulator.done_drawing();
@@ -96,6 +85,7 @@ impl EmulatorWindow {
             .collapsible(false)
             .default_width(30.)
             .open(&mut self.settings.key_binds_window_open)
+            .default_height(200.)
             .show(ctx, |ui| {
                 ScrollArea::vertical().show(ui, |ui| {
                     for (i, key) in self.settings.key_map.iter_mut().enumerate() {
@@ -178,12 +168,43 @@ impl eframe::App for EmulatorWindow {
             });
         self.key_binds_window(ctx);
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            let image = egui::Image::new(&self.chip8_screen);
-            ui.add(image.fit_to_exact_size(ui.available_size()));
-        });
+        egui::CentralPanel::default()
+            .frame(Frame::NONE.fill(Color32::DARK_GRAY))
+            .show(ctx, |ui| {
+                let image = egui::Image::new(&self.chip8_screen);
+                let viewport_rect = ctx.viewport_rect();
+                let bottom_right = vec2(viewport_rect.width(), viewport_rect.height());
+
+                ui.put(
+                    Rect {
+                        min: Pos2::new(0., MENU_BAR_HEIGHT),
+                        max: bottom_right.to_pos2(),
+                    },
+                    image.fit_to_exact_size(bottom_right),
+                );
+            });
 
         self.chip8_emulator.done_drawing();
     }
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        Color32::BLACK.to_normalized_gamma_f32()
+    }
 }
-pub(crate) const MENU_BAR_HEIGHT: f32 = 25.;
+pub(crate) const MENU_BAR_HEIGHT: f32 = 20.;
+
+fn image_from_chip8_display(display: &[u8; 2048]) -> ColorImage {
+    let mut pixels = vec![0u8; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize * 4];
+
+    for (i, &pixel) in display.iter().enumerate() {
+        let color: u8 = if pixel == 1 { 255 } else { 0 };
+        pixels[i * 4] = color;
+        pixels[i * 4 + 1] = color;
+        pixels[i * 4 + 2] = color;
+        pixels[i * 4 + 3] = 255;
+    }
+
+    egui::ColorImage::from_rgba_unmultiplied(
+        [SCREEN_WIDTH as usize, SCREEN_HEIGHT as usize],
+        &pixels,
+    )
+}

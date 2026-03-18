@@ -1,9 +1,9 @@
-use crate::Chip8Emulator;
+use crate::{ chip8::chip8_emulator::Chip8Emulator, emulator::ChipEmulator};
 ///make and run the given bytes for the given cycles
 ///
 /// it is an inclusive loop
-fn chip8_test_helper(cycle_count: u8, bytes: &[u8]) -> Chip8Emulator {
-    let mut chip8 = Chip8Emulator::new();
+fn chip8_test_helper(cycle_count: u8, bytes: &[u8]) -> ChipEmulator<crate::Chip8OpCode> {
+    let mut chip8 = ChipEmulator::new(Chip8Emulator::new());
     chip8.load_bytes_into_memory(bytes);
     for _ in 0..cycle_count {
         chip8.cycle();
@@ -32,14 +32,17 @@ fn two_byte_load() {
 
 #[test]
 fn clear_screen() {
-    let mut chip8 = Chip8Emulator::new();
     //loads the clear screen command
-    chip8.load_bytes_into_memory(&[0x00, 0xE0]);
+
+    let mut chip8 = chip8_test_helper(0, &[0x00, 0xE0]);
     //set random areas to 1 to see if they get cleared
-    chip8.display[1032] = 1;
-    chip8.display[2020] = 1;
+    chip8.get_display_mut()[0]=1;
+    chip8.get_display_mut()[1032] = 1;
+    chip8.get_display_mut()[2020] = 1;
+    let len = chip8.get_display().len()-1;
+    chip8.get_display_mut()[len]=1;
     chip8.cycle();
-    assert_eq!([0; 2048], chip8.display)
+    assert_eq!([0; 2048], chip8.get_display())
 }
 
 #[test]
@@ -93,7 +96,7 @@ fn display() {
     correct_display[258] = 1;
     correct_display[259] = 1;
     //execute all the needed instructions
-    assert_eq!(correct_display, chip8.display)
+    assert_eq!(correct_display, chip8.get_display())
 }
 
 #[test]

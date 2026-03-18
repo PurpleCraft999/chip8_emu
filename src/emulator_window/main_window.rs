@@ -1,10 +1,12 @@
+use std::{io, path::Path};
+
 use eframe::egui::{
     self, Color32, ColorImage, Context, Frame, Key, MenuBar, Pos2, Rect, ScrollArea, Slider,
     TextEdit, TextureHandle, TextureOptions, TopBottomPanel, Widget, Window,
     containers::menu::MenuConfig, vec2,
 };
 use purple8::{
-    Chip8Emulator, SCREEN_HEIGHT, SCREEN_WIDTH, chip8::chip8_emulator_helpers::Chip8Clock,
+    Chip8OpCode, ChipEmulator, SCREEN_HEIGHT, SCREEN_WIDTH, chip8::{chip8_emulator::Chip8Emulator, chip8_emulator::Chip8Clock},
 };
 
 struct EmulatorSettings {
@@ -21,6 +23,51 @@ impl Default for EmulatorSettings {
         }
     }
 }
+enum Emulator{
+    Chip8(ChipEmulator<Chip8OpCode>),
+    // SuperChip(ChipEmulator<Super>)
+}
+impl Emulator {
+    fn cycle(&mut self){
+        match self{
+            &mut Self::Chip8(ref mut chip)=>chip.cycle(),
+        }
+    }
+    fn tick_timers(&mut self){
+        match self{
+            &mut Self::Chip8(ref mut chip)=>chip.tick_timers(),
+        }
+    }
+    fn get_display(&self)->&[u8]{
+        match self{
+            Self::Chip8(chip)=>chip.get_display(),
+        }
+    }
+    fn get_draw_flag(&self)->bool{
+        match self{
+            Self::Chip8(chip)=>chip.get_draw_flag(),
+        }
+    }
+    fn set_key(&mut self, index: usize, state: bool){
+        match self{
+            &mut Self::Chip8(ref mut chip)=>chip.set_key(index, state),
+        }
+    }
+    fn load_game(&mut self,file_path: &Path)->io::Result<()>{
+        match self{
+            &mut Self::Chip8(ref mut chip)=>chip.load_game(file_path),
+        }
+    }
+    fn done_drawing(&mut self){
+        match self{
+            &mut Self::Chip8(ref mut chip)=>chip.set_draw_flag(false),
+        }
+    }
+
+}
+
+
+
 const DEFAULT_KEY_MAP: [Key; 16] = [
     Key::Num0,
     Key::Num1,
@@ -41,7 +88,7 @@ const DEFAULT_KEY_MAP: [Key; 16] = [
 ];
 
 pub struct EmulatorWindow {
-    chip8_emulator: Chip8Emulator,
+    chip8_emulator: Emulator,
     chip8_clock: Chip8Clock,
     chip8_screen: TextureHandle,
     settings: EmulatorSettings,
@@ -50,7 +97,7 @@ pub struct EmulatorWindow {
 impl EmulatorWindow {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         Self {
-            chip8_emulator: Chip8Emulator::init(),
+            chip8_emulator: Emulator::Chip8(ChipEmulator::new(Chip8Emulator::new())),
             chip8_clock: Chip8Clock::new(),
             chip8_screen: cc.egui_ctx.load_texture(
                 "chip8_screen",
@@ -192,7 +239,7 @@ impl eframe::App for EmulatorWindow {
 }
 pub(crate) const MENU_BAR_HEIGHT: f32 = 20.;
 
-fn image_from_chip8_display(display: &[u8; 2048]) -> ColorImage {
+fn image_from_chip8_display(display: &[u8]) -> ColorImage {
     let mut pixels = vec![0u8; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize * 4];
 
     for (i, &pixel) in display.iter().enumerate() {

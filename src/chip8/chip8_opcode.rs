@@ -1,3 +1,7 @@
+use std::time::UNIX_EPOCH;
+
+use crate::{SCREEN_HEIGHT, SCREEN_WIDTH, emulator::Opcode};
+
 pub enum Chip8OpCode {
     ///0x00E0
     ClearScreen,
@@ -77,22 +81,22 @@ pub enum Chip8OpCode {
     ///0x0nnn
     JumpToSystemAddress { address: u16 },
 }
-impl Chip8OpCode {
-    pub fn decode(opcode: u16) -> Result<Self, UnkownOpCodeErr> {
+impl Opcode for Chip8OpCode {
+    fn decode(opcode: u16) -> Result<Self, UnkownOpCodeErr> {
         //gets the any memory address if it has one
         // nnn
-        let address = opcode & 0x0FFF;
+        let address = opcode & 0xFFF;
         //gets the registry number
-        let registry = ((opcode & 0x0F00) >> 8) as u8;
+        let registry = ((opcode & 0xF00) >> 8) as u8;
         //gets the value
         // kk
-        let value = (opcode & 0x00FF) as u8;
+        let value = (opcode & 0xFF) as u8;
         //y
-        let registry2 = ((opcode & 0x00F0) >> 4) as u8;
-        let n = (opcode & 0x000F) as u8;
-
+        let registry2 = ((opcode & 0xF0) >> 4) as u8;
+        let n = (opcode & 0xF) as u8;
+        let operator_type =(opcode & 0xF000) >> 12;
         //get just the operator type
-        match (opcode & 0xF000) >> 12 {
+        match operator_type  {
             //op type is 0 it must be one of these
             0x0 => match opcode {
                 0xE0 => Ok(Self::ClearScreen),
@@ -177,6 +181,268 @@ impl Chip8OpCode {
             _ => Err(UnkownOpCodeErr(opcode)),
         }
     }
+    fn execute_opcode<O: Opcode + 'static>(
+        self,
+        emu: &mut crate::emulator::ChipEmulator<O>,
+    ) -> bool {
+        //this is for the few opcodes that dont want the program counter to increase normally
+
+        let mut increase_program_counter = true;
+        match self {
+            Chip8OpCode::ClearScreen => {
+                emu.get_display_mut().fill(0);
+                emu.set_draw_flag(true);
+            }
+            Chip8OpCode::LoadVRegistry { registry, value } => emu.set_v(registry, value),
+            Chip8OpCode::LoadIndexRegistry(value) => emu.set_index_register(value),
+            Chip8OpCode::Display { x, y, n } => {
+                let vx = emu.get_v(x) % SCREEN_WIDTH;
+                let vy = emu.get_v(y) % SCREEN_HEIGHT;
+                emu.set_v(0xF, 0);
+                
+                for row in 0..n {
+                    //read the pixel from memory
+                    let pixel = emu.get_memory(emu.get_index_register() + row as u16);
+                    //for each bit in the byte
+                    for col in 0..8 {
+                        if pixel & (0x80 >> col) != 0 {
+                            let x_coord = (vx + col) as usize;
+                            let y_coord = (vy + row) as usize;
+                            if x_coord < SCREEN_WIDTH as usize && y_coord < SCREEN_HEIGHT as usize {
+                                let idx = x_coord + (y_coord * SCREEN_WIDTH as usize);
+                                if idx < emu.get_display().len() {
+                                    //this is a collision
+                                    if emu.get_display()[idx] == 1 {
+                                        emu.set_v(0xF, 1);
+                                    }
+                                    emu.get_display_mut()[idx] ^= 1;
+                                }
+                            }
+                        }
+                    }
+                }
+                emu.set_draw_flag(true);
+            }
+            Chip8OpCode::Jump { address } => {
+                emu.set_program_counter(address as usize);
+                increase_program_counter = false
+            }
+            Chip8OpCode::JumpPlusV0 { address } => {
+                emu.set_program_counter(address as usize + emu.get_v(0) as usize);
+                increase_program_counter = false
+            }
+            Chip8OpCode::Add { registry, value } => {
+                emu.set_v(registry, emu.get_v(registry).wrapping_add(value))
+            }
+            Chip8OpCode::SkipIfEqValue { registry, value } => {
+                if emu.get_v(registry) == value {
+                    emu.increase_program_counter();
+                }
+            }
+            Chip8OpCode::SkipIfNotEqValue { registry, value } => {
+                if emu.get_v(registry) != value {
+                    emu.increase_program_counter();
+                }
+            }
+            Chip8OpCode::SkipIfRegEq {
+                registry,
+                registry2,
+            } => {
+                if emu.get_v(registry) == emu.get_v(registry2) {
+                    emu.increase_program_counter();
+                }
+            }
+            Chip8OpCode::SkipIfRegNotEq {
+                registry,
+                registry2,
+            } => {
+                if emu.get_v(registry) != emu.get_v(registry2) {
+                    emu.increase_program_counter();
+                }
+            }
+            Chip8OpCode::Call { address } => {
+                emu.push_stack(emu.get_program_counter() + 2);
+                emu.set_program_counter(address as usize);
+                increase_program_counter = false
+            }
+            Chip8OpCode::Return => {
+                let value = emu.pop_stack();
+                emu.set_program_counter(value);
+                increase_program_counter = false;
+            }
+            Chip8OpCode::SetRegEq {
+                registry,
+                registry2,
+            } => emu.set_v(registry, emu.get_v(registry2)),
+            Chip8OpCode::BitOr {
+                registry,
+                registry2,
+            } => {
+                emu.set_v(registry, emu.get_v(registry) | emu.get_v(registry2));
+                emu.set_v(0xF, 0);
+            }
+            Chip8OpCode::BitAnd {
+                registry,
+                registry2,
+            } => {
+                emu.set_v(registry, emu.get_v(registry) & emu.get_v(registry2));
+                emu.set_v(0xF, 0);
+            }
+            Chip8OpCode::BitXor {
+                registry,
+                registry2,
+            } => {
+                emu.set_v(registry, emu.get_v(registry) ^ emu.get_v(registry2));
+                emu.set_v(0xF, 0);
+            }
+            Chip8OpCode::AddReg {
+                registry,
+                registry2,
+            } => {
+                let add = emu.get_v(registry).overflowing_add(emu.get_v(registry2));
+
+                emu.set_v(registry, add.0);
+                emu.set_v(0xF, add.1 as u8)
+            }
+            Chip8OpCode::SubReg {
+                registry,
+                registry2,
+            } => {
+                let sub = emu.get_v(registry).overflowing_sub(emu.get_v(registry2));
+
+                emu.set_v(registry, sub.0);
+                emu.set_v(0xF, !sub.1 as u8)
+            }
+            Chip8OpCode::ShiftRight {
+                registry,
+                registry2,
+            } => {
+                let reg_to_shift = registry2;
+                let least = emu.get_v(reg_to_shift) & 1;
+                let shr = emu.get_v(reg_to_shift).wrapping_shr(1);
+
+                emu.set_v(registry, shr);
+                if least == 1 {
+                    emu.set_v(0xF, 1)
+                } else {
+                    emu.set_v(0xF, 0)
+                }
+            }
+            Chip8OpCode::ShiftLeft {
+                registry,
+                registry2,
+            } => {
+                let reg_to_shift = registry2;
+
+                let most = emu.get_v(reg_to_shift) & 0x80;
+
+                let shl = emu.get_v(reg_to_shift).wrapping_shl(1);
+
+                emu.set_v(registry, shl);
+                if most == 128 {
+                    emu.set_v(0xF, 1)
+                } else {
+                    emu.set_v(0xF, 0)
+                }
+            }
+            Chip8OpCode::SubRegYX {
+                registry,
+                registry2,
+            } => {
+                let sub = emu.get_v(registry2).overflowing_sub(emu.get_v(registry));
+
+                emu.set_v(registry, sub.0);
+                emu.set_v(0xF, !sub.1 as u8)
+            }
+            Chip8OpCode::LoadMemIntoRegs { max_registry } => {
+                for i in 0..=max_registry {
+                    let mem = emu.get_memory(emu.get_index_register() + i as u16);
+                    emu.set_v(i, mem);
+                }
+                emu.set_index_register(emu.get_index_register() + 1 + max_registry as u16);
+            }
+            Chip8OpCode::StoreRegsIntoMem { max_registry } => {
+                for i in 0..=max_registry {
+                    let v = emu.get_v(i);
+                    emu.set_memory(emu.get_index_register() as usize + i as usize, v);
+                }
+                emu.set_index_register(emu.get_index_register() + 1 + max_registry as u16);
+            }
+            Chip8OpCode::StoreVXAsBinary { registry } => {
+                let n = emu.get_v(registry);
+                let hundreds = n / 100;
+                let tens = (n / 10) % 10;
+                let ones = n % 10;
+                let index = emu.get_index_register() as usize;
+                emu.set_memory(index, hundreds);
+                emu.set_memory(index + 1, tens);
+                emu.set_memory(index + 2, ones);
+            }
+            Chip8OpCode::AddAssignI { registry } => {
+                emu.set_index_register(emu.get_index_register() + emu.get_v(registry) as u16);
+            }
+            Chip8OpCode::SkipIfNotPressed { registry } => {
+                if !emu.get_key(emu.get_v(registry) as usize) {
+                    emu.increase_program_counter();
+                }
+            }
+            Chip8OpCode::SkipIfPressed { registry } => {
+                if emu.get_key(emu.get_v(registry) as usize) {
+                    emu.increase_program_counter();
+                }
+            }
+            Chip8OpCode::PutDelayInRegX { registry } => emu.set_v(registry, emu.get_delay_time()),
+            Chip8OpCode::SetDelayTimer { registry: time } => emu.set_delay_timer(emu.get_v(time)),
+            Chip8OpCode::WaitForKey { registry } => {
+                if !emu.has_active_key() {
+                    for (i, &is_down) in emu.get_keys().iter().enumerate() {
+                        if is_down {
+                            emu.set_active_key(Some(i as u8));
+                            break;
+                        }
+                    }
+                    increase_program_counter = false
+                } else if let Some(key_idx) = emu.get_active_key() {
+                    if !emu.get_key(key_idx as usize) {
+                        emu.set_v(registry, key_idx);
+                        emu.set_active_key(None);
+                    } else {
+                        increase_program_counter = false
+                    }
+                }
+            }
+            Chip8OpCode::Random { registry, value } => emu.set_v(
+                registry,
+                std::time::SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_micros() as u8
+                    & value,
+            ),
+            Chip8OpCode::SetSoundTimer { registry: time } => {
+                emu.set_sound_timer(emu.get_v(time));
+                emu.play_sound();
+            }
+            Chip8OpCode::GetFontStart { registry } => {
+                //load font if not loaded
+                if emu.get_memory(0) != 0xF0 {
+                    emu.load_font();
+                }
+                emu.set_index_register(registry as u16 * 5);
+            }
+            Chip8OpCode::JumpToSystemAddress { .. } => println!("unsuported operation 0x0nnn"),
+        }
+        increase_program_counter
+    }
+    fn useless_opcode() -> Self {
+        Self::Add {
+            registry: 0,
+            value: 0,
+        }
+    }
 }
 
 pub struct UnkownOpCodeErr(pub(crate) u16);
+
+
+

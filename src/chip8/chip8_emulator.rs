@@ -1,4 +1,4 @@
-use crate::{Chip8OpCode, emulator::Chip};
+use crate::{Chip8Opcode, emulator::Chip};
 
 pub struct Chip8Emulator {
     ///64 by 32 screen with black or white pixels
@@ -11,12 +11,15 @@ impl Chip8Emulator {
 }
 
 impl Chip for Chip8Emulator {
-    type OpcodeType = Chip8OpCode;
+    type OpcodeType = Chip8Opcode;
     fn get_display(&self) -> &[u8] {
         &self.display
     }
     fn get_display_mut(&mut self) -> &mut [u8] {
         &mut self.display
+    }
+    fn resize_screen(&mut self,_size:usize) {
+        panic!("screen cannot be resized")
     }
 }
 use std::time::{Duration, Instant};

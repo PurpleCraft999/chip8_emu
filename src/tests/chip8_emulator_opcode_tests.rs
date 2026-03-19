@@ -1,8 +1,8 @@
-use crate::{ chip8::chip8_emulator::Chip8Emulator, emulator::ChipEmulator};
+use crate::{chip8::chip8_emulator::Chip8Emulator, emulator::ChipEmulator};
 ///make and run the given bytes for the given cycles
 ///
 /// it is an inclusive loop
-fn chip8_test_helper(cycle_count: u8, bytes: &[u8]) -> ChipEmulator<crate::Chip8OpCode> {
+fn chip8_test_helper(cycle_count: u8, bytes: &[u8]) -> ChipEmulator<crate::Chip8Opcode> {
     let mut chip8 = ChipEmulator::new(Chip8Emulator::new());
     chip8.load_bytes_into_memory(bytes);
     for _ in 0..cycle_count {
@@ -36,11 +36,11 @@ fn clear_screen() {
 
     let mut chip8 = chip8_test_helper(0, &[0x00, 0xE0]);
     //set random areas to 1 to see if they get cleared
-    chip8.get_display_mut()[0]=1;
+    chip8.get_display_mut()[0] = 1;
     chip8.get_display_mut()[1032] = 1;
     chip8.get_display_mut()[2020] = 1;
-    let len = chip8.get_display().len()-1;
-    chip8.get_display_mut()[len]=1;
+    let len = chip8.get_display().len() - 1;
+    chip8.get_display_mut()[len] = 1;
     chip8.cycle();
     assert_eq!([0; 2048], chip8.get_display())
 }

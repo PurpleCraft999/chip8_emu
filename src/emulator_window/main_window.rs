@@ -6,7 +6,9 @@ use eframe::egui::{
     containers::menu::MenuConfig, vec2,
 };
 use purple8::{
-    Chip8OpCode, ChipEmulator, SCREEN_HEIGHT, SCREEN_WIDTH, chip8::{chip8_emulator::Chip8Emulator, chip8_emulator::Chip8Clock},
+    Chip8Opcode, ChipEmulator, SCREEN_HEIGHT, SCREEN_WIDTH,
+    chip8::chip8_emulator::{Chip8Clock, Chip8Emulator},
+    super_chip::{SuperChipEmulator, SuperChipOpcode},
 };
 
 struct EmulatorSettings {
@@ -23,50 +25,59 @@ impl Default for EmulatorSettings {
         }
     }
 }
-enum Emulator{
-    Chip8(ChipEmulator<Chip8OpCode>),
-    // SuperChip(ChipEmulator<Super>)
+
+macro_rules! call_method {
+    ($self:expr,$method:ident($($args:expr),*)) => {
+        match $self{
+            Self::Chip8(  chip) => chip.$method($($args),*),
+            Self::SuperChip(  chip) => chip.$method($($args),*),
+        }
+    };
+}
+
+
+enum Emulator {
+    Chip8(ChipEmulator<Chip8Opcode>),
+    SuperChip(ChipEmulator<SuperChipOpcode>),
 }
 impl Emulator {
-    fn cycle(&mut self){
-        match self{
-            &mut Self::Chip8(ref mut chip)=>chip.cycle(),
-        }
+    fn new_chip8() -> Self {
+        Self::Chip8(ChipEmulator::new(Chip8Emulator::new()))
     }
-    fn tick_timers(&mut self){
-        match self{
-            &mut Self::Chip8(ref mut chip)=>chip.tick_timers(),
-        }
+    fn new_super_chip() -> Self {
+        Self::SuperChip(ChipEmulator::new(SuperChipEmulator::new()))
     }
-    fn get_display(&self)->&[u8]{
-        match self{
-            Self::Chip8(chip)=>chip.get_display(),
-        }
-    }
-    fn get_draw_flag(&self)->bool{
-        match self{
-            Self::Chip8(chip)=>chip.get_draw_flag(),
-        }
-    }
-    fn set_key(&mut self, index: usize, state: bool){
-        match self{
-            &mut Self::Chip8(ref mut chip)=>chip.set_key(index, state),
-        }
-    }
-    fn load_game(&mut self,file_path: &Path)->io::Result<()>{
-        match self{
-            &mut Self::Chip8(ref mut chip)=>chip.load_game(file_path),
-        }
-    }
-    fn done_drawing(&mut self){
-        match self{
-            &mut Self::Chip8(ref mut chip)=>chip.set_draw_flag(false),
-        }
-    }
-
 }
 
-
+impl Emulator {
+    fn cycle(&mut self) {
+        call_method!(self,cycle())
+    }
+    fn tick_timers(&mut self) {
+        call_method!(self,tick_timers())
+    }
+    fn get_display(&self) -> &[u8] {
+        call_method!(self,get_display())
+    }
+    fn get_draw_flag(&self) -> bool {
+        call_method!(self,get_draw_flag())
+    }
+    fn set_key(&mut self, index: usize, state: bool) {
+        call_method!(self,set_key(index,state))
+    }
+    fn load_game(&mut self, file_path: &Path) -> io::Result<()> {
+        call_method!(self,load_game(file_path))
+    }
+    fn done_drawing(&mut self) {
+        call_method!(self,set_draw_flag(false))
+    }
+    fn set_memory(&mut self, addr: usize, value: u8){
+        call_method!(self,set_memory(addr,value))
+    }
+    fn get_display_size(&self)->(usize,usize){
+        call_method!(self,get_display_size())
+    }
+}
 
 const DEFAULT_KEY_MAP: [Key; 16] = [
     Key::Num0,
@@ -88,7 +99,7 @@ const DEFAULT_KEY_MAP: [Key; 16] = [
 ];
 
 pub struct EmulatorWindow {
-    chip8_emulator: Emulator,
+    emulator: Emulator,
     chip8_clock: Chip8Clock,
     chip8_screen: TextureHandle,
     settings: EmulatorSettings,
@@ -97,12 +108,12 @@ pub struct EmulatorWindow {
 impl EmulatorWindow {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         Self {
-            chip8_emulator: Emulator::Chip8(ChipEmulator::new(Chip8Emulator::new())),
+            emulator: Emulator::new_super_chip(),
             chip8_clock: Chip8Clock::new(),
             chip8_screen: cc.egui_ctx.load_texture(
                 "chip8_screen",
                 ColorImage::filled(
-                    [SCREEN_WIDTH as usize, SCREEN_HEIGHT as usize],
+                    [SCREEN_WIDTH as usize*2, SCREEN_HEIGHT as usize*2],
                     Color32::BLACK,
                 ),
                 TextureOptions::NEAREST,
@@ -113,19 +124,20 @@ impl EmulatorWindow {
 
     fn chip8_cycle(&mut self) {
         for _ in 0..self.settings.cycle_speed {
-            self.chip8_emulator.cycle();
+            self.emulator.cycle();
         }
         if self.chip8_clock.tick_chip8_timers() {
-            self.chip8_emulator.tick_timers();
+            self.emulator.tick_timers();
         }
     }
     fn chip8_render(&mut self) {
-        let display = self.chip8_emulator.get_display();
+        let display = self.emulator.get_display();
+        let (width,height) = self.emulator.get_display_size();
+        let image = image_from_chip8_display(display,width,height);
 
-        let image = image_from_chip8_display(display);
         self.chip8_screen.set(image, TextureOptions::NEAREST);
 
-        self.chip8_emulator.done_drawing();
+        self.emulator.done_drawing();
     }
     fn key_binds_window(&mut self, ctx: &Context) {
         Window::new("Key Binds")
@@ -165,7 +177,7 @@ impl eframe::App for EmulatorWindow {
 
         ctx.input(|input| {
             for (index, key) in self.settings.key_map.iter().enumerate() {
-                self.chip8_emulator.set_key(index, input.key_down(*key));
+                self.emulator.set_key(index, input.key_down(*key));
             }
 
             let droped_files = &input.raw.dropped_files;
@@ -173,10 +185,10 @@ impl eframe::App for EmulatorWindow {
             if let Some(file) = &droped_files.first()
                 && let Some(path) = &file.path
             {
-                let _ = self.chip8_emulator.load_game(path);
+                let _ = self.emulator.load_game(path);
             }
         });
-        if self.chip8_emulator.get_draw_flag() {
+        if self.emulator.get_draw_flag() {
             self.chip8_render();
         }
 
@@ -195,7 +207,12 @@ impl eframe::App for EmulatorWindow {
                                     .add_filter("ch8 files", &["ch8"])
                                     .pick_file()
                             {
-                                self.chip8_emulator.load_game(&path).unwrap();
+                                self.emulator.load_game(&path).unwrap();
+                            }
+                            if ui.button("tests").clicked(){
+                                self.emulator.load_game(&Path::new("5-quirks.ch8")).unwrap();
+                                
+                                self.emulator.set_memory(0x1FF, 2);
                             }
                             //  if ui.button("play sound").clicked(){
                             //     self.chip8_emulator.load_bytes_into_memory(&[0x60,0x03,0xF0,0x18,0x12,0x04]);
@@ -209,6 +226,9 @@ impl eframe::App for EmulatorWindow {
                             });
                             if ui.button("KeyBinds").clicked() {
                                 self.settings.key_binds_window_open = true;
+                            }
+                            if ui.button("print screen").clicked() {
+                                println!("{:?}",self.emulator.get_display());
                             }
                         });
                     })
@@ -231,7 +251,7 @@ impl eframe::App for EmulatorWindow {
                 );
             });
 
-        self.chip8_emulator.done_drawing();
+        self.emulator.done_drawing();
     }
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         Color32::BLACK.to_normalized_gamma_f32()
@@ -239,8 +259,8 @@ impl eframe::App for EmulatorWindow {
 }
 pub(crate) const MENU_BAR_HEIGHT: f32 = 20.;
 
-fn image_from_chip8_display(display: &[u8]) -> ColorImage {
-    let mut pixels = vec![0u8; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize * 4];
+fn image_from_chip8_display(display: &[u8],width:usize,height:usize) -> ColorImage {
+    let mut pixels = vec![0;display.len()*4];
 
     for (i, &pixel) in display.iter().enumerate() {
         let color: u8 = if pixel == 1 { 255 } else { 0 };
@@ -251,7 +271,7 @@ fn image_from_chip8_display(display: &[u8]) -> ColorImage {
     }
 
     egui::ColorImage::from_rgba_unmultiplied(
-        [SCREEN_WIDTH as usize, SCREEN_HEIGHT as usize],
+        [width, height],
         &pixels,
     )
 }

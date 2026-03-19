@@ -2,6 +2,7 @@ pub trait Chip {
     type OpcodeType: Opcode;
     fn get_display(&self) -> &[u8];
     fn get_display_mut(&mut self) -> &mut [u8];
+    fn resize_screen(&mut self,size:usize);
 }
 
 // impl<O: Opcode> Chip for Box<dyn Chip<OpcodeType = O>> {
@@ -26,7 +27,7 @@ use std::{
     path::Path,
 };
 
-use crate::{ UnkownOpCodeErr, chip8::chip8_emulator::Chip8Audio};
+use crate::{UnkownOpCodeErr, chip8::chip8_emulator::Chip8Audio};
 
 const FONT_SET: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, //0
@@ -183,6 +184,7 @@ impl<O: Opcode + 'static> ChipEmulator<O> {
     }
     ///gets from the v registry
     pub fn get_v(&self, addr: u8) -> u8 {
+        assert!(addr<=0xF);
         self.v_registers[addr as usize]
     }
     pub fn get_memory(&self, addr: u16) -> u8 {
@@ -211,6 +213,9 @@ impl<O: Opcode + 'static> ChipEmulator<O> {
     }
     pub fn get_display_mut(&mut self) -> &mut [u8] {
         self.chip.get_display_mut()
+    }
+    pub fn resize_display(&mut self,size:usize){
+        self.chip.resize_screen(size);
     }
     pub fn set_index_register(&mut self, addr: u16) {
         self.index_register = addr;
@@ -275,6 +280,13 @@ impl<O: Opcode + 'static> ChipEmulator<O> {
     }
     pub fn set_active_key(&mut self, key: Option<u8>) {
         self.active_key = key;
+    }
+    pub fn get_display_size(&self)->(usize,usize){
+        match self.get_display().len(){
+            2048=>(64,32),
+            8192=>(128,64),
+            _=>panic!("chip 8 screen is an invailid size")
+        }
     }
 }
 

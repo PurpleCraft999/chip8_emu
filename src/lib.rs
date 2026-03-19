@@ -2,7 +2,7 @@
 pub mod chip8;
 pub use chip8::{
     // chip8_emulator::Chip8Emulator,
-    chip8_opcode::{Chip8OpCode, UnkownOpCodeErr},
+    chip8_opcode::{Chip8Opcode, UnkownOpCodeErr},
 };
 pub mod emulator;
 pub mod super_chip;

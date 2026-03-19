@@ -1,8 +1,8 @@
-use crate::{chip8::chip8_emulator::Chip8Emulator, emulator::ChipEmulator};
+use crate::{chip8::chip8_emulator::Chip8Emulator, emulator::{Chip, ChipEmulator}};
 ///make and run the given bytes for the given cycles
 ///
 /// it is an inclusive loop
-fn chip8_test_helper(cycle_count: u8, bytes: &[u8]) -> ChipEmulator<crate::Chip8Opcode> {
+fn chip8_test_helper(cycle_count: u8, bytes: &[u8]) -> ChipEmulator<Chip8Emulator> {
     let mut chip8 = ChipEmulator::new(Chip8Emulator::new());
     chip8.load_bytes_into_memory(bytes);
     for _ in 0..cycle_count {

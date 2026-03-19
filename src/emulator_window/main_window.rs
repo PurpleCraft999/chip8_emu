@@ -6,9 +6,7 @@ use eframe::egui::{
     containers::menu::MenuConfig, vec2,
 };
 use purple8::{
-    Chip8Opcode, ChipEmulator, SCREEN_HEIGHT, SCREEN_WIDTH,
-    chip8::chip8_emulator::{Chip8Clock, Chip8Emulator},
-    super_chip::{SuperChipEmulator, SuperChipOpcode},
+    ChipEmulator, SCREEN_HEIGHT, SCREEN_WIDTH, chip8::chip8_emulator::{Chip8Clock, Chip8Emulator}, emulator::Chip, super_chip::SuperChipEmulator
 };
 
 struct EmulatorSettings {
@@ -37,8 +35,8 @@ macro_rules! call_method {
 
 
 enum Emulator {
-    Chip8(ChipEmulator<Chip8Opcode>),
-    SuperChip(ChipEmulator<SuperChipOpcode>),
+    Chip8(ChipEmulator<Chip8Emulator>),
+    SuperChip(ChipEmulator<SuperChipEmulator>),
 }
 impl Emulator {
     fn new_chip8() -> Self {

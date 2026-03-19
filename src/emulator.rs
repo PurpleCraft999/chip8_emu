@@ -1,8 +1,9 @@
 pub trait Chip {
-    type OpcodeType: Opcode;
+    type Opcode: Opcode;
     fn get_display(&self) -> &[u8];
     fn get_display_mut(&mut self) -> &mut [u8];
-    fn resize_screen(&mut self,size:usize);
+    fn resize_screen(&mut self, size: usize);
+    fn new()->Self;
 }
 
 // impl<O: Opcode> Chip for Box<dyn Chip<OpcodeType = O>> {
@@ -13,11 +14,14 @@ pub trait Chip {
 //     fn get_display_mut(&mut self) -> &mut [u8] {
 //         self.as_mut().get_display_mut()
 //     }
+//     fn resize_screen(&mut self,size:usize) {
+//         self.as_mut().resize_screen(size);
+//     }
 // }
 
 pub trait Opcode: Sized {
     fn decode(opcode: u16) -> Result<Self, UnkownOpCodeErr>;
-    fn execute_opcode<O: Opcode + 'static>(self, emu: &mut ChipEmulator<O>) -> bool;
+    fn execute_opcode<C: Chip>(self, emu: &mut ChipEmulator<C>) -> bool;
     fn useless_opcode() -> Self;
 }
 
@@ -55,7 +59,7 @@ const FONT_SET: [u8; 80] = [
     9=d
 */
 
-pub struct ChipEmulator<O: Opcode> {
+pub struct ChipEmulator<C: Chip> {
     memory: [u8; 4096],
     //usize to index memory
     program_counter: usize,
@@ -66,7 +70,7 @@ pub struct ChipEmulator<O: Opcode> {
     index_register: u16,
     // ///64 by 32 screen with black or white pixels
     // display: [u8; 2048],
-    chip: Box<dyn Chip<OpcodeType = O>>,
+    chip: C,
     delay_timer: u8,
     sound_timer: u8,
     draw_flag: bool,
@@ -74,14 +78,15 @@ pub struct ChipEmulator<O: Opcode> {
     ///holds if that key is pressed or not
     keys: [bool; 16],
     //below here is my stuff and is not strictly neccesary
+    
     ///only used for WaitForKey (Fx0A)
     active_key: Option<u8>,
     ///has something been loaded into memory
     has_memory_loaded: bool,
 }
-impl<O: Opcode + 'static> ChipEmulator<O> {
+impl<C: Chip> ChipEmulator<C> {
     ///makes a completely blank chip8 emulator
-    pub fn new<C: Chip<OpcodeType = O> + 'static>(chip: C) -> Self {
+    pub fn new(chip: C) -> Self {
         Self {
             //all the memory the emulator needs
             memory: [0; 4096],
@@ -92,7 +97,7 @@ impl<O: Opcode + 'static> ChipEmulator<O> {
             stack: [0; 16],
             stack_pointer: 0,
             index_register: 0,
-            chip: Box::new(chip),
+            chip,
             // display: [0; 2048],
             sound_timer: 0,
             delay_timer: 0,
@@ -109,7 +114,7 @@ impl<O: Opcode + 'static> ChipEmulator<O> {
         }
     }
     ///makes a chip8 emulator with the necisary items loaded into memory
-    pub fn init<C: Chip<OpcodeType = O> + 'static>(chip: C) -> Self {
+    pub fn init(chip: C) -> Self {
         let mut chip8 = Self::new(chip);
         chip8.load_font();
 
@@ -139,7 +144,8 @@ impl<O: Opcode + 'static> ChipEmulator<O> {
     }
 
     pub fn reset(&mut self) {
-        // *self = ChipEmulator::new(self.chip);
+
+        *self = ChipEmulator::new(C::new());
     }
 
     pub fn tick_timers(&mut self) {
@@ -157,7 +163,7 @@ impl<O: Opcode + 'static> ChipEmulator<O> {
         }
     }
     ///if it comes a cross empty memory it will return `Chip8OpCode::Add {registry: 0,value: 0}`
-    pub fn current_op_code(&self) -> O {
+    pub fn current_op_code(&self) -> C::Opcode {
         //gets the opcode from the next two bytes
         let opcode = u16::from_be_bytes([
             self.memory[self.program_counter],
@@ -165,14 +171,14 @@ impl<O: Opcode + 'static> ChipEmulator<O> {
         ]);
         // println!("opcode: {opcode:X}");
 
-        match O::decode(opcode) {
+        match C::Opcode::decode(opcode) {
             Ok(opcode) => opcode,
             //run a useless opcode
-            Err(UnkownOpCodeErr(0)) => O::useless_opcode(),
+            Err(UnkownOpCodeErr(0)) => C::Opcode::useless_opcode(),
 
             Err(UnkownOpCodeErr(e)) => {
                 println!("unkown opcode:{e:X}");
-                O::useless_opcode()
+                C::Opcode::useless_opcode()
             }
         }
     }
@@ -184,7 +190,7 @@ impl<O: Opcode + 'static> ChipEmulator<O> {
     }
     ///gets from the v registry
     pub fn get_v(&self, addr: u8) -> u8 {
-        assert!(addr<=0xF);
+        assert!(addr <= 0xF);
         self.v_registers[addr as usize]
     }
     pub fn get_memory(&self, addr: u16) -> u8 {
@@ -214,7 +220,7 @@ impl<O: Opcode + 'static> ChipEmulator<O> {
     pub fn get_display_mut(&mut self) -> &mut [u8] {
         self.chip.get_display_mut()
     }
-    pub fn resize_display(&mut self,size:usize){
+    pub fn resize_display(&mut self, size: usize) {
         self.chip.resize_screen(size);
     }
     pub fn set_index_register(&mut self, addr: u16) {
@@ -281,11 +287,11 @@ impl<O: Opcode + 'static> ChipEmulator<O> {
     pub fn set_active_key(&mut self, key: Option<u8>) {
         self.active_key = key;
     }
-    pub fn get_display_size(&self)->(usize,usize){
-        match self.get_display().len(){
-            2048=>(64,32),
-            8192=>(128,64),
-            _=>panic!("chip 8 screen is an invailid size")
+    pub fn get_display_size(&self) -> (usize, usize) {
+        match self.get_display().len() {
+            2048 => (64, 32),
+            8192 => (128, 64),
+            _ => panic!("chip 8 screen is an invailid size"),
         }
     }
 }

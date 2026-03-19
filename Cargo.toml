@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 description = "A Chip8 emulator"
 [dependencies]
+#Needed for the window
 eframe = "0.33.3"
 rfd = "0.17.2"
 rodio = { version = "0.22.2", default-features = false,features = ["playback"]}
+#Needed for the emulator

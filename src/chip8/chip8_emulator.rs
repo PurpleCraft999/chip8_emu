@@ -1,25 +1,23 @@
 use crate::{Chip8Opcode, emulator::Chip};
-
 pub struct Chip8Emulator {
     ///64 by 32 screen with black or white pixels
     display: [u8; 2048],
 }
-impl Chip8Emulator {
-    pub fn new() -> Self {
-        Self { display: [0; 2048] }
-    }
-}
+
 
 impl Chip for Chip8Emulator {
-    type OpcodeType = Chip8Opcode;
+    type Opcode = Chip8Opcode;
     fn get_display(&self) -> &[u8] {
         &self.display
     }
     fn get_display_mut(&mut self) -> &mut [u8] {
         &mut self.display
     }
-    fn resize_screen(&mut self,_size:usize) {
+    fn resize_screen(&mut self, _size: usize) {
         panic!("screen cannot be resized")
+    }
+    fn new()->Self {
+        Self { display: [0; 2048] }
     }
 }
 use std::time::{Duration, Instant};

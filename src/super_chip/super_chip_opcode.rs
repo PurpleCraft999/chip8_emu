@@ -3,19 +3,42 @@ use crate::{
     chip8::chip8_opcode::{
         opcode_load_mem_into_reg, opcode_lshift, opcode_rshift, opcode_store_reg_into_mem,
     },
-    emulator::Opcode,
+    emulator::{Chip, Opcode},
 };
 
 pub enum SuperChipOpcode {
     Chip8(Chip8Opcode),
+    ///00FF
     RaiseScreenResolution,
+    ///00FE
     LowerScreenResolution,
+    ///DXY0
     Draw{
         registry:u8,
         registry2:u8
     },
+    ///00FB
     ScrollRight,
-    ScrollDown,
+    ///00CN
+    ScrollDown{
+        n:u8
+    },
+    ///00FC
+    ScrollLeft,
+    ///FX30
+    SetFontLarge{
+        registry:u8,
+    },
+    ///00FD
+    Exit,
+    ///FX75
+    SaveToStorage{
+        registry:u8,
+    },
+    ///FX85
+    LoadFromStorage{
+        registry:u8,
+    }
 }
 impl Opcode for SuperChipOpcode {
     fn decode(opcode: u16) -> Result<Self, UnkownOpCodeErr> {
@@ -30,12 +53,14 @@ impl Opcode for SuperChipOpcode {
         let registry2 = ((opcode & 0xF0) >> 4) as u8;
         let n = (opcode & 0xF) as u8;
         let operator_type = (opcode & 0xF000) >> 12;
+        
         match operator_type {
             0x0 => match opcode {
                 0xFF => Ok(Self::RaiseScreenResolution),
                 0xFE => Ok(Self::LowerScreenResolution),
                 0xFB => Ok(Self::ScrollRight),
-                0xC => Ok(Self::ScrollDown),
+                0xFC => Ok(Self::ScrollLeft),
+                scroll_down if opcode>>4==0xC => Ok(Self::ScrollDown{ n }),
                 _ => Ok(Self::Chip8(Chip8Opcode::decode(opcode)?)),
             },
             0xD if n==0 =>Ok(Self::Draw { registry, registry2 }),
@@ -50,7 +75,7 @@ impl Opcode for SuperChipOpcode {
         //     }
         // }
     }
-    fn execute_opcode<O: Opcode + 'static>(self, emu: &mut crate::ChipEmulator<O>) -> bool {
+    fn execute_opcode<C:Chip>(self, emu: &mut crate::ChipEmulator<C>) -> bool {
         let mut increase_program_counter = true;
         match self {
             Self::Chip8(opcode) => match opcode {
@@ -84,7 +109,7 @@ impl Opcode for SuperChipOpcode {
 
             Self::LowerScreenResolution=>emu.resize_display(2048),
             Self::RaiseScreenResolution=>emu.resize_display(8192),
-            Self::Draw { .. }=>unimplemented!(),
+            
             Self::ScrollRight=>{
                 let (width,_) = emu.get_display_size();
                 // let width  = 64;
@@ -96,7 +121,39 @@ impl Opcode for SuperChipOpcode {
                     
                 }
             },
-            Self::ScrollDown=>()
+            Self::ScrollLeft=>{
+                                let (width,_) = emu.get_display_size();
+                // let width  = 64;
+                for row in emu.get_display_mut().chunks_mut(width) {
+                    // let len = row.len();
+                    row.reverse();
+                    row.copy_within(0..width-4, 4);
+                    row[..4].fill(0);
+                    row.reverse();
+                }
+            }
+            Self::ScrollDown{n}=>{
+                let n = n as usize;
+                let (width,height) = emu.get_display_size();
+                let display = emu.get_display_mut();
+                for y in (n..height).rev() {
+                    let target_start = y * width;
+                    let source_start = (y - n) * width;
+                    
+                    
+                    display.copy_within(source_start..source_start + width, target_start);
+                }
+
+            
+                display[0..n * width].fill(0);
+
+            },
+            Self::Draw { .. }=>todo!(),
+            Self::Exit=>(),
+            Self::LoadFromStorage { .. }=>(),
+            Self::SaveToStorage { .. }=>(),
+            Self::SetFontLarge { .. }=>(),
+            
         }
         increase_program_counter
     }

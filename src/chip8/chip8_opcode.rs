@@ -1,6 +1,6 @@
 use std::time::UNIX_EPOCH;
 
-use crate::{ChipEmulator, SCREEN_HEIGHT, SCREEN_WIDTH, emulator::Opcode};
+use crate::{ChipEmulator, SCREEN_HEIGHT, SCREEN_WIDTH, emulator::{Chip, Opcode}};
 
 pub enum Chip8Opcode {
     ///0x00E0
@@ -181,9 +181,9 @@ impl Opcode for Chip8Opcode {
             _ => Err(UnkownOpCodeErr(opcode)),
         }
     }
-    fn execute_opcode<O: Opcode + 'static>(
+    fn execute_opcode<C:Chip>(
         self,
-        emu: &mut crate::emulator::ChipEmulator<O>,
+        emu: &mut crate::emulator::ChipEmulator<C>,
     ) -> bool {
         //this is for the few opcodes that dont want the program counter to increase normally
 
@@ -403,7 +403,7 @@ impl Opcode for Chip8Opcode {
                 emu.set_index_register(registry as u16 * 5);
             }
             Chip8Opcode::JumpToSystemAddress { address } => {
-                // println!("unsuported operation {address}")
+                println!("0x0nnn is unsupported {address:X}")
             }
         }
         increase_program_counter
@@ -416,8 +416,8 @@ impl Opcode for Chip8Opcode {
     }
 }
 
-pub fn opcode_rshift<O: Opcode + 'static>(
-    emu: &mut ChipEmulator<O>,
+pub fn opcode_rshift<C:Chip>(
+    emu: &mut ChipEmulator<C>,
     shift_registry: u8,
     set_registry: u8,
 ) {
@@ -432,8 +432,8 @@ pub fn opcode_rshift<O: Opcode + 'static>(
         emu.set_v(0xF, 0)
     }
 }
-pub fn opcode_lshift<O: Opcode + 'static>(
-    emu: &mut ChipEmulator<O>,
+pub fn opcode_lshift<C:Chip>(
+    emu: &mut ChipEmulator<C>,
     shift_registry: u8,
     set_registry: u8,
 ) {
@@ -450,8 +450,8 @@ pub fn opcode_lshift<O: Opcode + 'static>(
         emu.set_v(0xF, 0)
     }
 }
-pub fn opcode_load_mem_into_reg<O: Opcode + 'static>(
-    emu: &mut ChipEmulator<O>,
+pub fn opcode_load_mem_into_reg<C:Chip>(
+    emu: &mut ChipEmulator<C>,
     max_registry: u8,
     increase_i: bool,
 ) {
@@ -463,8 +463,8 @@ pub fn opcode_load_mem_into_reg<O: Opcode + 'static>(
     emu.set_index_register(emu.get_index_register() + 1 + max_registry as u16);
     }
 }
-pub fn opcode_store_reg_into_mem<O: Opcode + 'static>(
-    emu: &mut ChipEmulator<O>,
+pub fn opcode_store_reg_into_mem<C:Chip>(
+    emu: &mut ChipEmulator<C>,
     max_registry: u8,
     increase_i: bool,
 ) {

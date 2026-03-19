@@ -1,11 +1,11 @@
-mod emulator_window;
+// mod emulator;
 
 use eframe::{
     NativeOptions,
     egui::{IconData, ViewportBuilder, vec2},
 };
 
-use crate::emulator_window::main_window::{EmulatorWindow, MENU_BAR_HEIGHT};
+use purple8::emulator::window::{EmulatorWindow, MENU_BAR_HEIGHT};
 
 fn main() {
     let window_size = vec2(620., 310. + MENU_BAR_HEIGHT);

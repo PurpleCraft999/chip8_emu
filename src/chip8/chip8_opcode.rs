@@ -1,6 +1,9 @@
 use std::time::UNIX_EPOCH;
 
-use crate::{ChipEmulator, SCREEN_HEIGHT, SCREEN_WIDTH, emulator::{Chip, Opcode}};
+use crate::{
+    ChipEmulator,
+    emulator::{Chip, Opcode},
+};
 
 pub enum Chip8Opcode {
     ///0x00E0
@@ -10,7 +13,7 @@ pub enum Chip8Opcode {
     ///0xA
     LoadIndexRegistry(u16),
     ///0xD
-    Display { x: u8, y: u8, n: u8 },
+    Draw { x: u8, y: u8, n: u8 },
     ///0x1
     Jump { address: u16 },
     ///0x7
@@ -103,11 +106,11 @@ impl Opcode for Chip8Opcode {
                 0xEE => Ok(Self::Return),
                 //this is a blank address
                 0 => Err(UnkownOpCodeErr(opcode)),
-                _  => Ok(Self::JumpToSystemAddress { address }),
+                _ => Ok(Self::JumpToSystemAddress { address }),
             },
             0x6 => Ok(Self::LoadVRegistry { registry, value }),
             0xA => Ok(Self::LoadIndexRegistry(address)),
-            0xD => Ok(Self::Display {
+            0xD => Ok(Self::Draw {
                 x: registry,
                 y: registry2,
                 n,
@@ -181,10 +184,7 @@ impl Opcode for Chip8Opcode {
             _ => Err(UnkownOpCodeErr(opcode)),
         }
     }
-    fn execute_opcode<C:Chip>(
-        self,
-        emu: &mut crate::emulator::ChipEmulator<C>,
-    ) -> bool {
+    fn execute_opcode<C: Chip>(self, emu: &mut crate::emulator::ChipEmulator<C>) -> bool {
         //this is for the few opcodes that dont want the program counter to increase normally
 
         let mut increase_program_counter = true;
@@ -195,33 +195,8 @@ impl Opcode for Chip8Opcode {
             }
             Chip8Opcode::LoadVRegistry { registry, value } => emu.set_v(registry, value),
             Chip8Opcode::LoadIndexRegistry(value) => emu.set_index_register(value),
-            Chip8Opcode::Display { x, y, n } => {
-                let vx = emu.get_v(x) % SCREEN_WIDTH;
-                let vy = emu.get_v(y) % SCREEN_HEIGHT;
-                emu.set_v(0xF, 0);
-
-                for row in 0..n {
-                    //read the pixel from memory
-                    let pixel = emu.get_memory(emu.get_index_register() + row as u16);
-                    //for each bit in the byte
-                    for col in 0..8 {
-                        if pixel & (0x80 >> col) != 0 {
-                            let x_coord = (vx + col) as usize;
-                            let y_coord = (vy + row) as usize;
-                            if x_coord < SCREEN_WIDTH as usize && y_coord < SCREEN_HEIGHT as usize {
-                                let idx = x_coord + (y_coord * SCREEN_WIDTH as usize);
-                                if idx < emu.get_display().len() {
-                                    //this is a collision
-                                    if emu.get_display()[idx] == 1 {
-                                        emu.set_v(0xF, 1);
-                                    }
-                                    emu.get_display_mut()[idx] ^= 1;
-                                }
-                            }
-                        }
-                    }
-                }
-                emu.set_draw_flag(true);
+            Chip8Opcode::Draw { x, y, n } => {
+                opcode_draw(emu, x, y, n);
             }
             Chip8Opcode::Jump { address } => {
                 emu.set_program_counter(address as usize);
@@ -416,11 +391,7 @@ impl Opcode for Chip8Opcode {
     }
 }
 
-pub fn opcode_rshift<C:Chip>(
-    emu: &mut ChipEmulator<C>,
-    shift_registry: u8,
-    set_registry: u8,
-) {
+pub fn opcode_rshift<C: Chip>(emu: &mut ChipEmulator<C>, shift_registry: u8, set_registry: u8) {
     let reg_to_shift = shift_registry;
     let least = emu.get_v(reg_to_shift) & 1;
     let shr = emu.get_v(reg_to_shift).wrapping_shr(1);
@@ -432,11 +403,7 @@ pub fn opcode_rshift<C:Chip>(
         emu.set_v(0xF, 0)
     }
 }
-pub fn opcode_lshift<C:Chip>(
-    emu: &mut ChipEmulator<C>,
-    shift_registry: u8,
-    set_registry: u8,
-) {
+pub fn opcode_lshift<C: Chip>(emu: &mut ChipEmulator<C>, shift_registry: u8, set_registry: u8) {
     let reg_to_shift = shift_registry;
 
     let most = emu.get_v(reg_to_shift) & 0x80;
@@ -450,7 +417,7 @@ pub fn opcode_lshift<C:Chip>(
         emu.set_v(0xF, 0)
     }
 }
-pub fn opcode_load_mem_into_reg<C:Chip>(
+pub fn opcode_load_mem_into_reg<C: Chip>(
     emu: &mut ChipEmulator<C>,
     max_registry: u8,
     increase_i: bool,
@@ -459,11 +426,11 @@ pub fn opcode_load_mem_into_reg<C:Chip>(
         let mem = emu.get_memory(emu.get_index_register() + i as u16);
         emu.set_v(i, mem);
     }
-    if increase_i{
-    emu.set_index_register(emu.get_index_register() + 1 + max_registry as u16);
+    if increase_i {
+        emu.set_index_register(emu.get_index_register() + 1 + max_registry as u16);
     }
 }
-pub fn opcode_store_reg_into_mem<C:Chip>(
+pub fn opcode_store_reg_into_mem<C: Chip>(
     emu: &mut ChipEmulator<C>,
     max_registry: u8,
     increase_i: bool,
@@ -472,9 +439,40 @@ pub fn opcode_store_reg_into_mem<C:Chip>(
         let v = emu.get_v(i);
         emu.set_memory(emu.get_index_register() as usize + i as usize, v);
     }
-    if increase_i{
-    emu.set_index_register(emu.get_index_register() + 1 + max_registry as u16);
+    if increase_i {
+        emu.set_index_register(emu.get_index_register() + 1 + max_registry as u16);
     }
 }
+pub fn opcode_draw<C: Chip>(emu: &mut ChipEmulator<C>, x: u8, y: u8, n: u8) {
+    let (width, height) = emu.get_display_size();
 
+    let vx = emu.get_v(x) % width as u8;
+    let vy = emu.get_v(y) % height as u8;
+    emu.set_v(0xF, 0);
+
+    for row in 0..n {
+        //read the pixel from memory
+        let pixel = emu.get_memory(emu.get_index_register() + row as u16);
+        //for each bit in the byte
+        for col in 0..8 {
+            if pixel & (0x80 >> col) != 0 {
+                let x_coord = (vx + col) as usize;
+                let y_coord = (vy + row) as usize;
+                if x_coord < width && y_coord < height {
+                    let idx = x_coord + (y_coord * width);
+                    if idx < emu.get_display().len() {
+                        //this is a collision
+                        if emu.get_display()[idx] == 1 {
+                            emu.set_v(0xF, 1);
+                        }
+                        emu.get_display_mut()[idx] ^= 1;
+                    }
+                }
+            }
+        }
+    }
+    emu.set_draw_flag(true);
+}
+
+#[derive(Debug)]
 pub struct UnkownOpCodeErr(pub(crate) u16);

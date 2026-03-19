@@ -13,32 +13,32 @@ pub enum SuperChipOpcode {
     ///00FE
     LowerScreenResolution,
     ///DXY0
-    Draw{
-        registry:u8,
-        registry2:u8
+    LargeDraw {
+        registry: u8,
+        registry2: u8,
     },
     ///00FB
     ScrollRight,
     ///00CN
-    ScrollDown{
-        n:u8
+    ScrollDown {
+        n: u8,
     },
     ///00FC
     ScrollLeft,
     ///FX30
-    SetFontLarge{
-        registry:u8,
+    SetFontLarge {
+        registry: u8,
     },
     ///00FD
     Exit,
     ///FX75
-    SaveToStorage{
-        registry:u8,
+    SaveToStorage {
+        registry: u8,
     },
     ///FX85
-    LoadFromStorage{
-        registry:u8,
-    }
+    LoadFromStorage {
+        registry: u8,
+    },
 }
 impl Opcode for SuperChipOpcode {
     fn decode(opcode: u16) -> Result<Self, UnkownOpCodeErr> {
@@ -53,17 +53,22 @@ impl Opcode for SuperChipOpcode {
         let registry2 = ((opcode & 0xF0) >> 4) as u8;
         let n = (opcode & 0xF) as u8;
         let operator_type = (opcode & 0xF000) >> 12;
-        
+
         match operator_type {
             0x0 => match opcode {
                 0xFF => Ok(Self::RaiseScreenResolution),
                 0xFE => Ok(Self::LowerScreenResolution),
                 0xFB => Ok(Self::ScrollRight),
                 0xFC => Ok(Self::ScrollLeft),
-                scroll_down if opcode>>4==0xC => Ok(Self::ScrollDown{ n }),
+                scroll_down if opcode >> 4 == 0xC => Ok(Self::ScrollDown { n }),
                 _ => Ok(Self::Chip8(Chip8Opcode::decode(opcode)?)),
             },
-            0xD if n==0 =>Ok(Self::Draw { registry, registry2 }),
+            0xD if n == 0 => Ok(Self::LargeDraw {
+                registry,
+                registry2,
+            }),
+            0xF if registry2 == 0x7 && n == 0x5 => Ok(Self::SaveToStorage { registry }),
+            0xF if registry2 == 0x8 && n == 0x5 => Ok(Self::LoadFromStorage { registry }),
             _ => Ok(Self::Chip8(Chip8Opcode::decode(opcode)?)),
         }
 
@@ -75,7 +80,7 @@ impl Opcode for SuperChipOpcode {
         //     }
         // }
     }
-    fn execute_opcode<C:Chip>(self, emu: &mut crate::ChipEmulator<C>) -> bool {
+    fn execute_opcode<C: Chip>(self, emu: &mut crate::ChipEmulator<C>) -> bool {
         let mut increase_program_counter = true;
         match self {
             Self::Chip8(opcode) => match opcode {
@@ -86,74 +91,109 @@ impl Opcode for SuperChipOpcode {
                 }
                 Chip8Opcode::LoadMemIntoRegs { max_registry } => {
                     opcode_load_mem_into_reg(emu, max_registry, false)
-                }            
+                }
                 Chip8Opcode::BitOr {
-                registry,
-                registry2,
-            } => emu.set_v(registry, emu.get_v(registry) | emu.get_v(registry2)),
-            Chip8Opcode::BitAnd {
-                registry,
-                registry2,
-            } => emu.set_v(registry, emu.get_v(registry) & emu.get_v(registry2)),
-            Chip8Opcode::BitXor {
-                registry,
-                registry2,
-            } => emu.set_v(registry, emu.get_v(registry) ^ emu.get_v(registry2)),
-            Chip8Opcode::JumpPlusV0 { address }=>{
-                emu.set_program_counter(address as usize + emu.get_v(((address & 0xF00) >> 8) as u8) as usize);
-                increase_program_counter = false
-            }
-
+                    registry,
+                    registry2,
+                } => emu.set_v(registry, emu.get_v(registry) | emu.get_v(registry2)),
+                Chip8Opcode::BitAnd {
+                    registry,
+                    registry2,
+                } => emu.set_v(registry, emu.get_v(registry) & emu.get_v(registry2)),
+                Chip8Opcode::BitXor {
+                    registry,
+                    registry2,
+                } => emu.set_v(registry, emu.get_v(registry) ^ emu.get_v(registry2)),
+                Chip8Opcode::JumpPlusV0 { address } => {
+                    emu.set_program_counter(
+                        address as usize + emu.get_v(((address & 0xF00) >> 8) as u8) as usize,
+                    );
+                    increase_program_counter = false
+                }
                 _ => increase_program_counter = opcode.execute_opcode(emu),
             },
 
-            Self::LowerScreenResolution=>emu.resize_display(2048),
-            Self::RaiseScreenResolution=>emu.resize_display(8192),
-            
-            Self::ScrollRight=>{
-                let (width,_) = emu.get_display_size();
+            Self::LowerScreenResolution => emu.resize_display(2048),
+            Self::RaiseScreenResolution => emu.resize_display(8192),
+
+            Self::ScrollRight => {
+                let (width, _) = emu.get_display_size();
                 // let width  = 64;
                 for row in emu.get_display_mut().chunks_mut(width) {
                     // let len = row.len();
-                    
-                    row.copy_within(0..width-4, 4);
+
+                    row.copy_within(0..width - 4, 4);
                     row[..4].fill(0);
-                    
                 }
-            },
-            Self::ScrollLeft=>{
-                                let (width,_) = emu.get_display_size();
+            }
+            Self::ScrollLeft => {
+                let (width, _) = emu.get_display_size();
                 // let width  = 64;
                 for row in emu.get_display_mut().chunks_mut(width) {
                     // let len = row.len();
                     row.reverse();
-                    row.copy_within(0..width-4, 4);
+                    row.copy_within(0..width - 4, 4);
                     row[..4].fill(0);
                     row.reverse();
                 }
             }
-            Self::ScrollDown{n}=>{
+            Self::ScrollDown { n } => {
                 let n = n as usize;
-                let (width,height) = emu.get_display_size();
+                let (width, height) = emu.get_display_size();
                 let display = emu.get_display_mut();
                 for y in (n..height).rev() {
                     let target_start = y * width;
                     let source_start = (y - n) * width;
-                    
-                    
+
                     display.copy_within(source_start..source_start + width, target_start);
                 }
 
-            
                 display[0..n * width].fill(0);
+            }
+            Self::LargeDraw {
+                registry,
+                registry2,
+            } => {
+                emu.set_v(0xF, 0);
+                let start_address = emu.get_index_register();
+                let vx = emu.get_v(registry) as usize;
+                let vy = emu.get_v(registry2) as usize;
 
-            },
-            Self::Draw { .. }=>todo!(),
-            Self::Exit=>(),
-            Self::LoadFromStorage { .. }=>(),
-            Self::SaveToStorage { .. }=>(),
-            Self::SetFontLarge { .. }=>(),
-            
+                for dy in 0..16 {
+                    let row_addr = start_address + (dy * 2) as u16;
+                    let line = u16::from_be_bytes([
+                        emu.get_memory(row_addr),
+                        emu.get_memory(row_addr + 1),
+                    ]);
+
+                    for dx in 0..16 {
+                        let px = (vx + dx) % 128;
+                        let py = vy + dy;
+
+                        if py >= 64 {
+                            continue;
+                        }
+
+                        if (line & (0x8000 >> dx)) != 0 {
+                            let loc = px + (py * 128);
+
+                            if emu.get_display()[loc] == 1 {
+                                emu.set_v(0xF, 1);
+                            }
+
+                            emu.get_display_mut()[loc] ^= 1;
+                        }
+                    }
+                }
+                emu.set_draw_flag(true);
+            }
+            Self::Exit => {
+                emu.reset();
+                emu.set_draw_flag(true);
+            }
+            Self::LoadFromStorage { .. } => (),
+            Self::SaveToStorage { .. } => (),
+            Self::SetFontLarge { .. } => (),
         }
         increase_program_counter
     }

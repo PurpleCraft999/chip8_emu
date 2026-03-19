@@ -4,7 +4,6 @@ pub struct Chip8Emulator {
     display: [u8; 2048],
 }
 
-
 impl Chip for Chip8Emulator {
     type Opcode = Chip8Opcode;
     fn get_display(&self) -> &[u8] {
@@ -16,7 +15,7 @@ impl Chip for Chip8Emulator {
     fn resize_screen(&mut self, _size: usize) {
         panic!("screen cannot be resized")
     }
-    fn new()->Self {
+    fn new() -> Self {
         Self { display: [0; 2048] }
     }
 }

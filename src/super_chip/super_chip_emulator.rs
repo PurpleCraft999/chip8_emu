@@ -11,12 +11,12 @@ impl Chip for SuperChipEmulator {
     fn get_display_mut(&mut self) -> &mut [u8] {
         &mut self.display
     }
-    fn resize_screen(&mut self,size:usize) {
+    fn resize_screen(&mut self, size: usize) {
         self.display.fill(0);
         self.display.resize(size, 0);
     }
-    fn new()->Self {
-                Self {
+    fn new() -> Self {
+        Self {
             display: vec![0; 2048],
         }
     }

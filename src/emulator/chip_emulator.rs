@@ -1,37 +1,10 @@
-pub trait Chip {
-    type Opcode: Opcode;
-    fn get_display(&self) -> &[u8];
-    fn get_display_mut(&mut self) -> &mut [u8];
-    fn resize_screen(&mut self, size: usize);
-    fn new()->Self;
-}
-
-// impl<O: Opcode> Chip for Box<dyn Chip<OpcodeType = O>> {
-//     type OpcodeType = O;
-//     fn get_display(&self) -> &[u8] {
-//         self.as_ref().get_display()
-//     }
-//     fn get_display_mut(&mut self) -> &mut [u8] {
-//         self.as_mut().get_display_mut()
-//     }
-//     fn resize_screen(&mut self,size:usize) {
-//         self.as_mut().resize_screen(size);
-//     }
-// }
-
-pub trait Opcode: Sized {
-    fn decode(opcode: u16) -> Result<Self, UnkownOpCodeErr>;
-    fn execute_opcode<C: Chip>(self, emu: &mut ChipEmulator<C>) -> bool;
-    fn useless_opcode() -> Self;
-}
-
 use std::{
     fs::File,
     io::{self, Read},
     path::Path,
 };
 
-use crate::{UnkownOpCodeErr, chip8::chip8_emulator::Chip8Audio};
+use crate::{UnkownOpCodeErr, chip8::chip8_emulator::Chip8Audio, emulator::Chip, emulator::Opcode};
 
 const FONT_SET: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, //0
@@ -78,7 +51,6 @@ pub struct ChipEmulator<C: Chip> {
     ///holds if that key is pressed or not
     keys: [bool; 16],
     //below here is my stuff and is not strictly neccesary
-    
     ///only used for WaitForKey (Fx0A)
     active_key: Option<u8>,
     ///has something been loaded into memory
@@ -144,7 +116,6 @@ impl<C: Chip> ChipEmulator<C> {
     }
 
     pub fn reset(&mut self) {
-
         *self = ChipEmulator::new(C::new());
     }
 
@@ -170,6 +141,10 @@ impl<C: Chip> ChipEmulator<C> {
             self.memory[self.program_counter + 1],
         ]);
         // println!("opcode: {opcode:X}");
+        #[cfg(test)]
+        {
+            println!("opcode: {opcode:X}");
+        }
 
         match C::Opcode::decode(opcode) {
             Ok(opcode) => opcode,
@@ -295,7 +270,23 @@ impl<C: Chip> ChipEmulator<C> {
         }
     }
 }
+#[cfg(test)]
+///creates a `ChipEmulator` then loads the bytes into memory then runs `cycle_count` number of cycles
+macro_rules! chip_test_helper {
+    ($chip_type:ident,$bytes:expr,$cycle_count:expr) => {{
+        let mut chip8 = ChipEmulator::new($chip_type::new());
+        chip8.load_bytes_into_memory($bytes);
+        for _ in 0..$cycle_count {
+            chip8.cycle();
+        }
+        chip8
+    }};
+}
 
-#[path = "tests/chip8_emulator_opcode_tests.rs"]
+#[path = "../tests/chip8_emulator_opcode_tests.rs"]
 #[cfg(test)]
 mod chip8_emulator_opcode_tests;
+
+#[path = "../tests/super_chip_emulator_opcode_tests.rs"]
+#[cfg(test)]
+mod super_chip_emulator_opcode_tests;

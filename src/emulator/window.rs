@@ -1,12 +1,15 @@
 use std::{fmt::Display, io, path::Path};
 
+use crate::{
+    ChipEmulator, SCREEN_HEIGHT, SCREEN_WIDTH,
+    chip8::chip8_emulator::{Chip8Clock, Chip8Emulator},
+    emulator::Chip,
+    super_chip::SuperChipEmulator,
+};
 use eframe::egui::{
     self, Color32, ColorImage, Context, Frame, Key, MenuBar, Pos2, Rect, ScrollArea, Slider,
     TextEdit, TextureHandle, TextureOptions, TopBottomPanel, Widget, Window,
     containers::menu::MenuConfig, vec2,
-};
-use purple8::{
-    ChipEmulator, SCREEN_HEIGHT, SCREEN_WIDTH, chip8::chip8_emulator::{Chip8Clock, Chip8Emulator}, emulator::Chip, super_chip::SuperChipEmulator
 };
 
 struct EmulatorSettings {
@@ -33,7 +36,6 @@ macro_rules! call_method {
     };
 }
 
-
 enum Emulator {
     Chip8(ChipEmulator<Chip8Emulator>),
     SuperChip(ChipEmulator<SuperChipEmulator>),
@@ -49,42 +51,44 @@ impl Emulator {
 
 impl Emulator {
     fn cycle(&mut self) {
-        call_method!(self,cycle())
+        call_method!(self, cycle())
     }
     fn tick_timers(&mut self) {
-        call_method!(self,tick_timers())
+        call_method!(self, tick_timers())
     }
     fn get_display(&self) -> &[u8] {
-        call_method!(self,get_display())
+        call_method!(self, get_display())
     }
     fn get_draw_flag(&self) -> bool {
-        call_method!(self,get_draw_flag())
+        call_method!(self, get_draw_flag())
     }
     fn set_key(&mut self, index: usize, state: bool) {
-        call_method!(self,set_key(index,state))
+        call_method!(self, set_key(index, state))
     }
     fn load_game(&mut self, file_path: &Path) -> io::Result<()> {
-        call_method!(self,load_game(file_path))
+        call_method!(self, load_game(file_path))
     }
     fn done_drawing(&mut self) {
-        call_method!(self,set_draw_flag(false))
+        call_method!(self, set_draw_flag(false))
     }
-    fn set_memory(&mut self, addr: usize, value: u8){
-        call_method!(self,set_memory(addr,value))
+    fn set_memory(&mut self, addr: usize, value: u8) {
+        call_method!(self, set_memory(addr, value))
     }
-    fn get_display_size(&self)->(usize,usize){
-        call_method!(self,get_display_size())
+    fn get_display_size(&self) -> (usize, usize) {
+        call_method!(self, get_display_size())
+    }
+    fn load_bytes_into_memory(&mut self, bytes: &[u8]) {
+        call_method!(self, load_bytes_into_memory(bytes))
     }
 }
-impl Display for Emulator{
+impl Display for Emulator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let name = match self{
-            Self::Chip8(_)=> "chip8 emulator",
-            Self::SuperChip(_) => "super chip emulator"
+        let name = match self {
+            Self::Chip8(_) => "chip8 emulator",
+            Self::SuperChip(_) => "super chip emulator",
         };
 
-
-        write!(f,"{name}")
+        write!(f, "{name}")
     }
 }
 
@@ -117,12 +121,12 @@ pub struct EmulatorWindow {
 impl EmulatorWindow {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         Self {
-            emulator: Emulator::new_chip8(),
+            emulator: Emulator::new_super_chip(),
             chip8_clock: Chip8Clock::new(),
             chip8_screen: cc.egui_ctx.load_texture(
                 "chip8_screen",
                 ColorImage::filled(
-                    [SCREEN_WIDTH as usize*2, SCREEN_HEIGHT as usize*2],
+                    [SCREEN_WIDTH as usize * 2, SCREEN_HEIGHT as usize * 2],
                     Color32::BLACK,
                 ),
                 TextureOptions::NEAREST,
@@ -141,8 +145,8 @@ impl EmulatorWindow {
     }
     fn chip8_render(&mut self) {
         let display = self.emulator.get_display();
-        let (width,height) = self.emulator.get_display_size();
-        let image = image_from_chip8_display(display,width,height);
+        let (width, height) = self.emulator.get_display_size();
+        let image = image_from_chip8_display(display, width, height);
 
         self.chip8_screen.set(image, TextureOptions::NEAREST);
 
@@ -218,15 +222,19 @@ impl eframe::App for EmulatorWindow {
                             {
                                 self.emulator.load_game(&path).unwrap();
                             }
-                            if ui.button("tests").clicked(){
-                                self.emulator.load_game(&Path::new("5-quirks.ch8")).unwrap();
-                                
+                            if ui.button("tests").clicked() {
+                                self.emulator.load_game(Path::new("5-quirks.ch8")).unwrap();
+
                                 self.emulator.set_memory(0x1FF, 2);
                             }
+                            if ui.button("draw test").clicked() {
+                                self.emulator.load_game(Path::new("d.ch8")).unwrap();
+                            }
 
-                            //  if ui.button("play sound").clicked(){
-                            //     self.chip8_emulator.load_bytes_into_memory(&[0x60,0x03,0xF0,0x18,0x12,0x04]);
-                            //  }
+                            if ui.button("play sound").clicked() {
+                                self.emulator
+                                    .load_bytes_into_memory(&[0x60, 0x03, 0xF0, 0x18, 0x12, 0x04]);
+                            }
                             //  0x204
                         });
                         ui.menu_button("settings", |ui| {
@@ -240,10 +248,18 @@ impl eframe::App for EmulatorWindow {
                             // if ui.button("print screen").clicked() {
                             //     println!("{:?}",self.emulator.get_display());
                             // }
-                            if ui.button("switch emulator | current: ".to_owned()+&self.emulator.to_string()).clicked(){
-                                match self.emulator{
-                                    Emulator::Chip8(_)=>self.emulator= Emulator::new_super_chip(),
-                                    Emulator::SuperChip(_)=>self.emulator = Emulator::new_chip8(),
+                            if ui
+                                .button(
+                                    "switch emulator | current: ".to_owned()
+                                        + &self.emulator.to_string(),
+                                )
+                                .clicked()
+                            {
+                                match self.emulator {
+                                    Emulator::Chip8(_) => {
+                                        self.emulator = Emulator::new_super_chip()
+                                    }
+                                    Emulator::SuperChip(_) => self.emulator = Emulator::new_chip8(),
                                 }
                             }
                         });
@@ -273,10 +289,10 @@ impl eframe::App for EmulatorWindow {
         Color32::BLACK.to_normalized_gamma_f32()
     }
 }
-pub(crate) const MENU_BAR_HEIGHT: f32 = 20.;
+pub const MENU_BAR_HEIGHT: f32 = 20.;
 
-fn image_from_chip8_display(display: &[u8],width:usize,height:usize) -> ColorImage {
-    let mut pixels = vec![0;display.len()*4];
+fn image_from_chip8_display(display: &[u8], width: usize, height: usize) -> ColorImage {
+    let mut pixels = vec![0; display.len() * 4];
 
     for (i, &pixel) in display.iter().enumerate() {
         let color: u8 = if pixel == 1 { 255 } else { 0 };
@@ -286,8 +302,5 @@ fn image_from_chip8_display(display: &[u8],width:usize,height:usize) -> ColorIma
         pixels[i * 4 + 3] = 255;
     }
 
-    egui::ColorImage::from_rgba_unmultiplied(
-        [width, height],
-        &pixels,
-    )
+    egui::ColorImage::from_rgba_unmultiplied([width, height], &pixels)
 }

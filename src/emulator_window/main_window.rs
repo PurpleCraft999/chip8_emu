@@ -1,4 +1,4 @@
-use std::{io, path::Path};
+use std::{fmt::Display, io, path::Path};
 
 use eframe::egui::{
     self, Color32, ColorImage, Context, Frame, Key, MenuBar, Pos2, Rect, ScrollArea, Slider,
@@ -76,6 +76,17 @@ impl Emulator {
         call_method!(self,get_display_size())
     }
 }
+impl Display for Emulator{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self{
+            Self::Chip8(_)=> "chip8 emulator",
+            Self::SuperChip(_) => "super chip emulator"
+        };
+
+
+        write!(f,"{name}")
+    }
+}
 
 const DEFAULT_KEY_MAP: [Key; 16] = [
     Key::Num0,
@@ -106,7 +117,7 @@ pub struct EmulatorWindow {
 impl EmulatorWindow {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         Self {
-            emulator: Emulator::new_super_chip(),
+            emulator: Emulator::new_chip8(),
             chip8_clock: Chip8Clock::new(),
             chip8_screen: cc.egui_ctx.load_texture(
                 "chip8_screen",
@@ -212,6 +223,7 @@ impl eframe::App for EmulatorWindow {
                                 
                                 self.emulator.set_memory(0x1FF, 2);
                             }
+
                             //  if ui.button("play sound").clicked(){
                             //     self.chip8_emulator.load_bytes_into_memory(&[0x60,0x03,0xF0,0x18,0x12,0x04]);
                             //  }
@@ -225,8 +237,14 @@ impl eframe::App for EmulatorWindow {
                             if ui.button("KeyBinds").clicked() {
                                 self.settings.key_binds_window_open = true;
                             }
-                            if ui.button("print screen").clicked() {
-                                println!("{:?}",self.emulator.get_display());
+                            // if ui.button("print screen").clicked() {
+                            //     println!("{:?}",self.emulator.get_display());
+                            // }
+                            if ui.button("switch emulator | current: ".to_owned()+&self.emulator.to_string()).clicked(){
+                                match self.emulator{
+                                    Emulator::Chip8(_)=>self.emulator= Emulator::new_super_chip(),
+                                    Emulator::SuperChip(_)=>self.emulator = Emulator::new_chip8(),
+                                }
                             }
                         });
                     })

@@ -1,29 +1,11 @@
 use std::{
     fs::File,
+    hash::{DefaultHasher, Hash, Hasher},
     io::{self, Read},
     path::Path,
 };
 
 use crate::{UnkownOpCodeErr, chip8::chip8_emulator::Chip8Audio, emulator::Chip, emulator::Opcode};
-
-const FONT_SET: [u8; 80] = [
-    0xF0, 0x90, 0x90, 0x90, 0xF0, //0
-    0x20, 0x60, 0x20, 0x20, 0x70, //1
-    0xF0, 0x10, 0xF0, 0x80, 0xF0, //2
-    0xF0, 0x10, 0xF0, 0x10, 0xF0, //3
-    0x90, 0x90, 0xF0, 0x10, 0x10, //4
-    0xF0, 0x80, 0xF0, 0x10, 0xF0, //5
-    0xF0, 0x80, 0xF0, 0x90, 0xF0, //6
-    0xF0, 0x10, 0x20, 0x40, 0x40, //7
-    0xF0, 0x90, 0xF0, 0x90, 0xF0, //8
-    0xF0, 0x90, 0xF0, 0x10, 0xF0, //9
-    0xF0, 0x90, 0xF0, 0x90, 0x90, //A
-    0xE0, 0x90, 0xE0, 0x90, 0xE0, //B
-    0xF0, 0x80, 0x80, 0x80, 0xF0, //C
-    0xE0, 0x90, 0x90, 0x90, 0xE0, //D
-    0xF0, 0x80, 0xF0, 0x80, 0xF0, //E
-    0xF0, 0x80, 0xF0, 0x80, 0x80, //F
-];
 
 /*cave explorer
     5=w
@@ -55,6 +37,7 @@ pub struct ChipEmulator<C: Chip> {
     active_key: Option<u8>,
     ///has something been loaded into memory
     has_memory_loaded: bool,
+    game_id: Option<u64>,
 }
 impl<C: Chip> ChipEmulator<C> {
     ///makes a completely blank chip8 emulator
@@ -78,20 +61,21 @@ impl<C: Chip> ChipEmulator<C> {
             audio_player: Chip8Audio::new(),
             active_key: None,
             has_memory_loaded: false,
+            game_id: None,
         }
     }
-    pub fn load_font(&mut self) {
-        for (i, byte) in FONT_SET.iter().enumerate() {
+    pub fn load_font_small(&mut self) {
+        for (i, byte) in crate::chip8::chip8_emulator::FONT_SET.iter().enumerate() {
             self.memory[i] = *byte
         }
     }
-    ///makes a chip8 emulator with the necisary items loaded into memory
-    pub fn init(chip: C) -> Self {
-        let mut chip8 = Self::new(chip);
-        chip8.load_font();
-
-        chip8
+    pub fn load_font_big(&mut self){
+        for (i, byte) in crate::super_chip::super_chip_emulator::FONT_SET.iter().enumerate() {
+            //in order to not overide the small font set 81 is added
+            self.memory[i+81] = *byte
+        }
     }
+
     pub fn load_game(&mut self, file_path: &Path) -> io::Result<()> {
         let mut file = File::open(file_path)?;
         let mut game_bytes = Vec::new();
@@ -103,6 +87,9 @@ impl<C: Chip> ChipEmulator<C> {
         // println!("byte len:{}", bytes.len());
         assert!(bytes.len() <= self.memory.len() - 512);
 
+        let mut hasher = DefaultHasher::new();
+        bytes.hash(&mut hasher);
+        self.game_id = Some(hasher.finish());
         self.reset();
 
         for (i, byte) in bytes.iter().enumerate() {
@@ -268,6 +255,9 @@ impl<C: Chip> ChipEmulator<C> {
             8192 => (128, 64),
             _ => panic!("chip 8 screen is an invailid size"),
         }
+    }
+    pub fn get_game_id(&self) -> Option<u64> {
+        self.game_id
     }
 }
 #[cfg(test)]

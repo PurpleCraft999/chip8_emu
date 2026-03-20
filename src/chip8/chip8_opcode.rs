@@ -373,7 +373,7 @@ impl Opcode for Chip8Opcode {
             Chip8Opcode::GetFontStart { registry } => {
                 //load font if not loaded
                 if emu.get_memory(0) != 0xF0 {
-                    emu.load_font();
+                    emu.load_font_small();
                 }
                 emu.set_index_register(registry as u16 * 5);
             }

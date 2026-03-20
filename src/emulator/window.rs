@@ -37,12 +37,12 @@ macro_rules! call_method {
 }
 
 enum Emulator {
-    Chip8(ChipEmulator<Chip8Emulator>),
+    Chip8(Box<ChipEmulator<Chip8Emulator>>),
     SuperChip(ChipEmulator<SuperChipEmulator>),
 }
 impl Emulator {
     fn new_chip8() -> Self {
-        Self::Chip8(ChipEmulator::new(Chip8Emulator::new()))
+        Self::Chip8(Box::new(ChipEmulator::new(Chip8Emulator::new())))
     }
     fn new_super_chip() -> Self {
         Self::SuperChip(ChipEmulator::new(SuperChipEmulator::new()))
@@ -112,7 +112,7 @@ const DEFAULT_KEY_MAP: [Key; 16] = [
 ];
 
 pub struct EmulatorWindow {
-    emulator: Emulator,
+    emulator:Emulator,
     chip8_clock: Chip8Clock,
     chip8_screen: TextureHandle,
     settings: EmulatorSettings,

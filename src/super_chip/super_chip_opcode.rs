@@ -1,9 +1,9 @@
+use std::{fs::{self, File}, io::{self, Write}};
+
 use crate::{
-    Chip8Opcode, UnkownOpCodeErr,
-    chip8::chip8_opcode::{
+    Chip8Opcode, ChipEmulator, UnkownOpCodeErr, chip8::chip8_opcode::{
         opcode_load_mem_into_reg, opcode_lshift, opcode_rshift, opcode_store_reg_into_mem,
-    },
-    emulator::{Chip, Opcode},
+    }, emulator::{Chip, Opcode}
 };
 
 pub enum SuperChipOpcode {
@@ -191,13 +191,90 @@ impl Opcode for SuperChipOpcode {
                 emu.reset();
                 emu.set_draw_flag(true);
             }
-            Self::LoadFromStorage { .. } => (),
-            Self::SaveToStorage { .. } => (),
-            Self::SetFontLarge { .. } => (),
+            Self::LoadFromStorage { registry } => if let Err(e) =load_from_storage(emu, registry){match e{
+                StorageError::NoGameId=>println!("no program to save"),
+                StorageError::RegistyTooHigh=>println!("tried to save to a registry that was too high"),
+                StorageError::Io(io)=>println!("{io}"),
+                StorageError::InvailidKey =>println!("could not parse the key in save")
+            }},
+            Self::SaveToStorage { registry } =>if let Err(e) =save_to_storage(emu, registry){match e{
+                StorageError::NoGameId=>println!("no program to save"),
+                StorageError::RegistyTooHigh=>println!("tried to save to a registry that was too high"),
+                StorageError::Io(io)=>println!("{io}"),
+                _=>()
+            }},
+            Self::SetFontLarge { registry } => {
+                if emu.get_memory(81)==0{
+                    emu.load_font_big();
+                }
+                emu.set_index_register((registry as u16 * 10)+81);
+            },
         }
         increase_program_counter
     }
     fn useless_opcode() -> Self {
         Self::Chip8(Chip8Opcode::useless_opcode())
+    }
+}
+
+fn save_to_storage<C:Chip>(emu:&mut ChipEmulator<C>,max_registry:u8)->Result<(), StorageError>{
+    if let Some(id)=emu.get_game_id(){
+
+    
+        if max_registry>7{
+            return Err(StorageError::RegistyTooHigh);
+        }
+        let mut save  = String::with_capacity(max_registry as usize+1);
+        for registry in  0..=max_registry{
+
+            save.push_str(&registry.to_string());
+            save.push(':');
+            save.push_str(&emu.get_v(registry).to_string());
+            save.push('\n');
+        }
+        save.pop();
+        
+        let mut file = File::create(&format!("save/{id}.txt"))?;
+        file.write_all(save.as_bytes())?;
+        Ok(())
+    } else{
+        Err(StorageError::NoGameId)
+    }
+
+}
+
+fn load_from_storage<C:Chip>(emu:&mut ChipEmulator<C>,max_registry:u8)->Result<(), StorageError>{
+    if let Some(id)=emu.get_game_id(){
+    if max_registry>7{
+        return Err(StorageError::RegistyTooHigh);
+    }
+    let save_file = fs::read_to_string(&format!("save/{id}.txt"))?;
+    for line in save_file.lines(){
+        if let Some((key,value))= line.split_once(':'){
+            let key = key.parse::<u8>().map_err(|_|StorageError::InvailidKey)?;
+            if key > max_registry{
+                continue;
+            }
+            let value = value.parse::<u8>().map_err(|_|StorageError::InvailidKey)?;
+            emu.set_v(key, value);
+        }
+    }
+    Ok(())
+} else {
+        Err(StorageError::NoGameId)
+    }
+}
+
+
+pub enum StorageError{
+    Io(io::Error),
+    RegistyTooHigh,
+    NoGameId,
+    InvailidKey
+}
+
+impl From<io::Error> for StorageError{
+    fn from(value: io::Error) -> Self {
+        Self::Io(value)
     }
 }

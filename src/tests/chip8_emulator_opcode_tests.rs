@@ -1,5 +1,5 @@
 use crate::{
-    chip8::chip8_emulator::Chip8Emulator,
+    chip8::chip8_emulator::{CHIP8_SCREEN_SIZE, Chip8Emulator},
     emulator::{Chip, ChipEmulator},
 };
 ///make and run the given bytes for the given cycles
@@ -40,7 +40,7 @@ fn clear_screen() {
     let len = chip8.get_display().len() - 1;
     chip8.get_display_mut()[len] = 1;
     chip8.cycle();
-    assert_eq!([0; 2048], chip8.get_display())
+    assert_eq!([0; CHIP8_SCREEN_SIZE], chip8.get_display())
 }
 
 #[test]
@@ -76,7 +76,7 @@ fn add() {
 fn display() {
     //set i to 0x204(where sprite is) then draw at x=0 y=1 for 5 rows
     let chip8 = chip8_test_helper(2, &[0xA2, 0x04, 0xD0, 0x15, 0x88, 0x50, 0xF8, 0xA8, 0x70]);
-    let mut correct_display = [0; 2048];
+    let mut correct_display = [0; CHIP8_SCREEN_SIZE];
     //set the test display
     correct_display[0] = 1;
     correct_display[4] = 1;
@@ -382,11 +382,9 @@ fn jump_plus_v0() {
 
 #[test]
 fn get_font_start() {
-    for i in 0..16 {
-        let command = u8::from_str_radix(format!("F{i:X}").as_str(), 16).unwrap();
-        let chip8 = chip8_test_helper(1, &[command, 0x29]);
-        assert_eq!(chip8.index_register, i * 5);
-    }
+    //Fx29
+    let chip8 = chip8_test_helper(2, &[0x61, 0xC, 0xF1, 0x29]);
+    assert_eq!(chip8.index_register, 60);
 }
 
 /*

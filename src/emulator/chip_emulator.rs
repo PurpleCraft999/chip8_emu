@@ -1,11 +1,11 @@
-use std::{
-    fs::File,
-    hash::{DefaultHasher, Hash, Hasher},
-    io::{self, Read},
-    path::Path,
-};
+use std::hash::{DefaultHasher, Hash, Hasher};
 
-use crate::{UnkownOpCodeErr, chip8::chip8_emulator::Chip8Audio, emulator::Chip, emulator::Opcode};
+use crate::{
+    UnkownOpCodeErr,
+    chip8::chip8_emulator::{CHIP8_SCREEN_SIZE, Chip8Audio},
+    emulator::{Chip, Opcode},
+    super_chip::super_chip_emulator::SUPER_CHIP_LARGE_SCREEN_SIZE,
+};
 
 /*cave explorer
     5=w
@@ -69,28 +69,30 @@ impl<C: Chip> ChipEmulator<C> {
             self.memory[i] = *byte
         }
     }
-    pub fn load_font_big(&mut self){
-        for (i, byte) in crate::super_chip::super_chip_emulator::FONT_SET.iter().enumerate() {
+    pub fn load_font_big(&mut self) {
+        for (i, byte) in crate::super_chip::super_chip_emulator::FONT_SET
+            .iter()
+            .enumerate()
+        {
             //in order to not overide the small font set 81 is added
-            self.memory[i+81] = *byte
+            self.memory[i + 81] = *byte
         }
     }
 
-    pub fn load_game(&mut self, file_path: &Path) -> io::Result<()> {
-        let mut file = File::open(file_path)?;
-        let mut game_bytes = Vec::new();
-        file.read_to_end(&mut game_bytes)?;
-        self.load_bytes_into_memory(&game_bytes);
-        Ok(())
-    }
+    // pub fn load_game(&mut self, file_path: &Path) -> io::Result<()> {
+    //     let game_bytes = fs::read(file_path)?;
+    //     self.load_bytes_into_memory(&game_bytes);
+    //     Ok(())
+    // }
     pub fn load_bytes_into_memory(&mut self, bytes: &[u8]) {
         // println!("byte len:{}", bytes.len());
         assert!(bytes.len() <= self.memory.len() - 512);
 
+        self.reset();
+
         let mut hasher = DefaultHasher::new();
         bytes.hash(&mut hasher);
         self.game_id = Some(hasher.finish());
-        self.reset();
 
         for (i, byte) in bytes.iter().enumerate() {
             //0x200 is the start of the useable memory
@@ -139,7 +141,7 @@ impl<C: Chip> ChipEmulator<C> {
             Err(UnkownOpCodeErr(0)) => C::Opcode::useless_opcode(),
 
             Err(UnkownOpCodeErr(e)) => {
-                println!("unkown opcode:{e:X}");
+                println!("unkown opcode:{e:X} at {}", self.program_counter);
                 C::Opcode::useless_opcode()
             }
         }
@@ -151,9 +153,9 @@ impl<C: Chip> ChipEmulator<C> {
         self.program_counter += 2
     }
     ///gets from the v registry
-    pub fn get_v(&self, addr: u8) -> u8 {
-        assert!(addr <= 0xF);
-        self.v_registers[addr as usize]
+    pub fn get_v(&self, registry: u8) -> u8 {
+        assert!(registry <= 0xF);
+        self.v_registers[registry as usize]
     }
     pub fn get_memory(&self, addr: u16) -> u8 {
         self.memory[addr as usize]
@@ -210,6 +212,11 @@ impl<C: Chip> ChipEmulator<C> {
         }
     }
     pub fn push_stack(&mut self, item: usize) {
+        if self.stack_pointer > 16 {
+            println!("Err stack at capacity");
+            return;
+        }
+
         self.stack[self.stack_pointer] = item;
         self.stack_pointer += 1;
     }
@@ -251,14 +258,18 @@ impl<C: Chip> ChipEmulator<C> {
     }
     pub fn get_display_size(&self) -> (usize, usize) {
         match self.get_display().len() {
-            2048 => (64, 32),
-            8192 => (128, 64),
+            CHIP8_SCREEN_SIZE => (64, 32),
+            SUPER_CHIP_LARGE_SCREEN_SIZE => (128, 64),
             _ => panic!("chip 8 screen is an invailid size"),
         }
     }
     pub fn get_game_id(&self) -> Option<u64> {
         self.game_id
     }
+    // pub fn transfer_game(&self,other:&mut Self){
+    //     other.memory=self.memory;
+    //     // other.di
+    // }
 }
 #[cfg(test)]
 ///creates a `ChipEmulator` then loads the bytes into memory then runs `cycle_count` number of cycles

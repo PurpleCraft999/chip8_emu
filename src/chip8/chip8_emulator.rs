@@ -18,9 +18,10 @@ pub(crate) const FONT_SET: [u8; 80] = [
     0xF0, 0x80, 0xF0, 0x80, 0xF0, //E
     0xF0, 0x80, 0xF0, 0x80, 0x80, //F
 ];
+pub const CHIP8_SCREEN_SIZE: usize = 2048;
 pub struct Chip8Emulator {
     ///64 by 32 screen with black or white pixels
-    display: [u8; 2048],
+    display: [u8; CHIP8_SCREEN_SIZE],
 }
 
 impl Chip for Chip8Emulator {
@@ -35,7 +36,9 @@ impl Chip for Chip8Emulator {
         panic!("screen cannot be resized")
     }
     fn new() -> Self {
-        Self { display: [0; 2048] }
+        Self {
+            display: [0; CHIP8_SCREEN_SIZE],
+        }
     }
 }
 use std::time::{Duration, Instant};

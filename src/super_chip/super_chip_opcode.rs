@@ -1,9 +1,17 @@
-use std::{fs::{self, File}, io::{self, Write}};
+use std::{
+    fs::{self, File},
+    io::{self, Write},
+};
 
 use crate::{
-    Chip8Opcode, ChipEmulator, UnkownOpCodeErr, chip8::chip8_opcode::{
-        opcode_load_mem_into_reg, opcode_lshift, opcode_rshift, opcode_store_reg_into_mem,
-    }, emulator::{Chip, Opcode}
+    Chip8Opcode, ChipEmulator, UnkownOpCodeErr,
+    chip8::{
+        chip8_emulator::CHIP8_SCREEN_SIZE,
+        chip8_opcode::{
+            opcode_load_mem_into_reg, opcode_lshift, opcode_rshift, opcode_store_reg_into_mem,
+        },
+    },
+    emulator::{Chip, Opcode},
 };
 
 pub enum SuperChipOpcode {
@@ -106,6 +114,7 @@ impl Opcode for SuperChipOpcode {
                 } => emu.set_v(registry, emu.get_v(registry) ^ emu.get_v(registry2)),
                 Chip8Opcode::JumpPlusV0 { address } => {
                     emu.set_program_counter(
+                        //bit manipulation is because the first nibble of the address is needed for the registry
                         address as usize + emu.get_v(((address & 0xF00) >> 8) as u8) as usize,
                     );
                     increase_program_counter = false
@@ -113,8 +122,10 @@ impl Opcode for SuperChipOpcode {
                 _ => increase_program_counter = opcode.execute_opcode(emu),
             },
 
-            Self::LowerScreenResolution => emu.resize_display(2048),
-            Self::RaiseScreenResolution => emu.resize_display(8192),
+            Self::LowerScreenResolution => emu.resize_display(CHIP8_SCREEN_SIZE),
+            Self::RaiseScreenResolution => {
+                emu.resize_display(super::super_chip_emulator::SUPER_CHIP_LARGE_SCREEN_SIZE)
+            }
 
             Self::ScrollRight => {
                 let (width, _) = emu.get_display_size();
@@ -158,7 +169,7 @@ impl Opcode for SuperChipOpcode {
                 let start_address = emu.get_index_register();
                 let vx = emu.get_v(registry) as usize;
                 let vy = emu.get_v(registry2) as usize;
-
+                let (width, height) = emu.get_display_size();
                 for dy in 0..16 {
                     let row_addr = start_address + (dy * 2) as u16;
                     let line = u16::from_be_bytes([
@@ -167,15 +178,15 @@ impl Opcode for SuperChipOpcode {
                     ]);
 
                     for dx in 0..16 {
-                        let px = (vx + dx) % 128;
+                        let px = (vx + dx) % width;
                         let py = vy + dy;
 
-                        if py >= 64 {
+                        if py >= height {
                             continue;
                         }
 
                         if (line & (0x8000 >> dx)) != 0 {
-                            let loc = px + (py * 128);
+                            let loc = px + (py * width);
 
                             if emu.get_display()[loc] == 1 {
                                 emu.set_v(0xF, 1);
@@ -191,24 +202,36 @@ impl Opcode for SuperChipOpcode {
                 emu.reset();
                 emu.set_draw_flag(true);
             }
-            Self::LoadFromStorage { registry } => if let Err(e) =load_from_storage(emu, registry){match e{
-                StorageError::NoGameId=>println!("no program to save"),
-                StorageError::RegistyTooHigh=>println!("tried to save to a registry that was too high"),
-                StorageError::Io(io)=>println!("{io}"),
-                StorageError::InvailidKey =>println!("could not parse the key in save")
-            }},
-            Self::SaveToStorage { registry } =>if let Err(e) =save_to_storage(emu, registry){match e{
-                StorageError::NoGameId=>println!("no program to save"),
-                StorageError::RegistyTooHigh=>println!("tried to save to a registry that was too high"),
-                StorageError::Io(io)=>println!("{io}"),
-                _=>()
-            }},
+            Self::LoadFromStorage { registry } => {
+                if let Err(e) = load_from_storage(emu, registry) {
+                    match e {
+                        StorageError::NoGameId => println!("no program to load"),
+                        StorageError::RegistyTooHigh => {
+                            println!("tried to load from a registry that was too high")
+                        }
+                        StorageError::Io(io) => println!("{io}"),
+                        StorageError::InvailidKey => println!("could not parse the key in save"),
+                    }
+                }
+            }
+            Self::SaveToStorage { registry } => {
+                if let Err(e) = save_to_storage(emu, registry) {
+                    match e {
+                        StorageError::NoGameId => println!("no program to save"),
+                        StorageError::RegistyTooHigh => {
+                            println!("tried to save to a registry that was too high")
+                        }
+                        StorageError::Io(io) => println!("{io}"),
+                        _ => (),
+                    }
+                }
+            }
             Self::SetFontLarge { registry } => {
-                if emu.get_memory(81)==0{
+                if emu.get_memory(81) == 0 {
                     emu.load_font_big();
                 }
-                emu.set_index_register((registry as u16 * 10)+81);
-            },
+                emu.set_index_register((emu.get_v(registry) as u16 * 10) + 81);
+            }
         }
         increase_program_counter
     }
@@ -217,63 +240,76 @@ impl Opcode for SuperChipOpcode {
     }
 }
 
-fn save_to_storage<C:Chip>(emu:&mut ChipEmulator<C>,max_registry:u8)->Result<(), StorageError>{
-    if let Some(id)=emu.get_game_id(){
-
-    
-        if max_registry>7{
+fn save_to_storage<C: Chip>(
+    emu: &mut ChipEmulator<C>,
+    max_registry: u8,
+) -> Result<(), StorageError> {
+    //ensure there is something loaded to save
+    if let Some(id) = emu.get_game_id() {
+        //ensure the registry is valid
+        if max_registry > 7 {
             return Err(StorageError::RegistyTooHigh);
         }
-        let mut save  = String::with_capacity(max_registry as usize+1);
-        for registry in  0..=max_registry{
-
+        //reserve roughly enough space for the string
+        let mut save = String::with_capacity((max_registry as usize + 1) * 4);
+        for registry in 0..=max_registry {
             save.push_str(&registry.to_string());
             save.push(':');
             save.push_str(&emu.get_v(registry).to_string());
             save.push('\n');
         }
+        //no empty line at the end
         save.pop();
-        
-        let mut file = File::create(&format!("save/{id}.txt"))?;
+        //create the file
+        let mut file = File::create(format!("save/{id}.hp48"))?;
+        //write to the file
         file.write_all(save.as_bytes())?;
         Ok(())
-    } else{
+    } else {
         Err(StorageError::NoGameId)
     }
-
 }
 
-fn load_from_storage<C:Chip>(emu:&mut ChipEmulator<C>,max_registry:u8)->Result<(), StorageError>{
-    if let Some(id)=emu.get_game_id(){
-    if max_registry>7{
-        return Err(StorageError::RegistyTooHigh);
-    }
-    let save_file = fs::read_to_string(&format!("save/{id}.txt"))?;
-    for line in save_file.lines(){
-        if let Some((key,value))= line.split_once(':'){
-            let key = key.parse::<u8>().map_err(|_|StorageError::InvailidKey)?;
-            if key > max_registry{
-                continue;
-            }
-            let value = value.parse::<u8>().map_err(|_|StorageError::InvailidKey)?;
-            emu.set_v(key, value);
+// .hp48 because originally it would be saved to a hp48 calculator altho i dont use the same formating as they did
+
+fn load_from_storage<C: Chip>(
+    emu: &mut ChipEmulator<C>,
+    max_registry: u8,
+) -> Result<(), StorageError> {
+    if let Some(id) = emu.get_game_id() {
+        if max_registry > 7 {
+            return Err(StorageError::RegistyTooHigh);
         }
-    }
-    Ok(())
-} else {
+        //read the file to string
+        let save_file = fs::read_to_string(format!("save/{id}.hp48"))?;
+        //since each item is on its own line
+        for line in save_file.lines() {
+            //should only ever have one semicolon so we split by it
+            if let Some((key, value)) = line.split_once(':') {
+                let key = key.parse().map_err(|_| StorageError::InvailidKey)?;
+                //if the key isnt one we want to load skip it
+                if key > max_registry {
+                    continue;
+                }
+                let value = value.parse().map_err(|_| StorageError::InvailidKey)?;
+                //set the registry
+                emu.set_v(key, value);
+            }
+        }
+        Ok(())
+    } else {
         Err(StorageError::NoGameId)
     }
 }
 
-
-pub enum StorageError{
+pub enum StorageError {
     Io(io::Error),
     RegistyTooHigh,
     NoGameId,
-    InvailidKey
+    InvailidKey,
 }
 
-impl From<io::Error> for StorageError{
+impl From<io::Error> for StorageError {
     fn from(value: io::Error) -> Self {
         Self::Io(value)
     }

@@ -375,7 +375,7 @@ impl Opcode for Chip8Opcode {
                 if emu.get_memory(0) != 0xF0 {
                     emu.load_font_small();
                 }
-                emu.set_index_register(registry as u16 * 5);
+                emu.set_index_register(emu.get_v(registry) as u16 * 5);
             }
             Chip8Opcode::JumpToSystemAddress { address } => {
                 println!("0x0nnn is unsupported {address:X}")

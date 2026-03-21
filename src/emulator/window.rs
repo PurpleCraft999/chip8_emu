@@ -1,4 +1,4 @@
-use std::{fmt::Display, io, path::Path};
+use std::{fmt::Display, fs, path::Path};
 
 use crate::{
     ChipEmulator, SCREEN_HEIGHT, SCREEN_WIDTH,
@@ -14,15 +14,19 @@ use eframe::egui::{
 
 struct EmulatorSettings {
     cycle_speed: u16,
-    key_map: [Key; 16],
+    key_map: KeyMap,
     key_binds_window_open: bool,
+    debug_window_open: bool,
+    pause: bool,
 }
 impl Default for EmulatorSettings {
     fn default() -> Self {
         Self {
             cycle_speed: 300,
             key_binds_window_open: false,
-            key_map: DEFAULT_KEY_MAP,
+            key_map: OCTO_KEY_MAP,
+            debug_window_open: false,
+            pause: false,
         }
     }
 }
@@ -38,14 +42,14 @@ macro_rules! call_method {
 
 enum Emulator {
     Chip8(Box<ChipEmulator<Chip8Emulator>>),
-    SuperChip(ChipEmulator<SuperChipEmulator>),
+    SuperChip(Box<ChipEmulator<SuperChipEmulator>>),
 }
 impl Emulator {
     fn new_chip8() -> Self {
         Self::Chip8(Box::new(ChipEmulator::new(Chip8Emulator::new())))
     }
     fn new_super_chip() -> Self {
-        Self::SuperChip(ChipEmulator::new(SuperChipEmulator::new()))
+        Self::SuperChip(Box::new(ChipEmulator::new(SuperChipEmulator::new())))
     }
 }
 
@@ -65,9 +69,9 @@ impl Emulator {
     fn set_key(&mut self, index: usize, state: bool) {
         call_method!(self, set_key(index, state))
     }
-    fn load_game(&mut self, file_path: &Path) -> io::Result<()> {
-        call_method!(self, load_game(file_path))
-    }
+    // fn load_game(&mut self, file_path: &Path) -> io::Result<()> {
+    //     call_method!(self, load_game(file_path))
+    // }
     fn done_drawing(&mut self) {
         call_method!(self, set_draw_flag(false))
     }
@@ -80,6 +84,9 @@ impl Emulator {
     fn load_bytes_into_memory(&mut self, bytes: &[u8]) {
         call_method!(self, load_bytes_into_memory(bytes))
     }
+    fn get_v(&self, registry: u8) -> u8 {
+        call_method!(self, get_v(registry))
+    }
 }
 impl Display for Emulator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -91,8 +98,8 @@ impl Display for Emulator {
         write!(f, "{name}")
     }
 }
-
-const DEFAULT_KEY_MAP: [Key; 16] = [
+type KeyMap = [Key; 16];
+const DEFAULT_KEY_MAP: KeyMap = [
     Key::Num0,
     Key::Num1,
     Key::Num2,
@@ -111,8 +118,27 @@ const DEFAULT_KEY_MAP: [Key; 16] = [
     Key::F,
 ];
 
+const OCTO_KEY_MAP: KeyMap = [
+    Key::X,    //0
+    Key::Num1, //1
+    Key::Num2, //2
+    Key::Num3, //3
+    Key::Q,    //4
+    Key::W,    //5
+    Key::E,    //6
+    Key::A,    //7
+    Key::S,    //8
+    Key::D,    //9
+    Key::Z,    //A
+    Key::C,    //B
+    Key::Num4, //C
+    Key::R,    //D
+    Key::F,    //E
+    Key::V,    //F
+];
+
 pub struct EmulatorWindow {
-    emulator:Emulator,
+    emulator: Emulator,
     chip8_clock: Chip8Clock,
     chip8_screen: TextureHandle,
     settings: EmulatorSettings,
@@ -121,7 +147,7 @@ pub struct EmulatorWindow {
 impl EmulatorWindow {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         Self {
-            emulator: Emulator::new_super_chip(),
+            emulator: Emulator::new_chip8(),
             chip8_clock: Chip8Clock::new(),
             chip8_screen: cc.egui_ctx.load_texture(
                 "chip8_screen",
@@ -136,6 +162,9 @@ impl EmulatorWindow {
     }
 
     fn chip8_cycle(&mut self) {
+        if self.settings.pause {
+            return;
+        }
         for _ in 0..self.settings.cycle_speed {
             self.emulator.cycle();
         }
@@ -180,6 +209,44 @@ impl EmulatorWindow {
                 });
             });
     }
+    fn debug_window(&mut self, ctx: &Context) {
+        Window::new("Debug")
+            .collapsible(false)
+            // .default_width(60.)
+            .open(&mut self.settings.debug_window_open)
+            // .default_height(100.)
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    for i in 0..16 {
+                        ui.label(i.to_string() + ":" + &self.emulator.get_v(i).to_string());
+                    }
+                });
+                ui.horizontal(|ui| {
+                    if ui.button("pause").clicked() {
+                        self.settings.pause = true;
+                    }
+                    if ui.button("advance cycle").clicked() {
+                        self.emulator.cycle();
+                    }
+                    if ui.button("unpause").clicked() {
+                        self.settings.pause = false;
+                    }
+                });
+            });
+    }
+    fn swap_emu(&mut self) {
+        match self.emulator {
+            Emulator::Chip8(_) => self.emulator = Emulator::new_super_chip(),
+            Emulator::SuperChip(_) => self.emulator = Emulator::new_chip8(),
+        }
+    }
+    fn load_game(&mut self, path: &Path) {
+        let bytes = fs::read(path).unwrap();
+
+        // bytes.iter().any(|byte|byte.)
+
+        self.emulator.load_bytes_into_memory(&bytes);
+    }
 }
 
 impl eframe::App for EmulatorWindow {
@@ -198,7 +265,7 @@ impl eframe::App for EmulatorWindow {
             if let Some(file) = &droped_files.first()
                 && let Some(path) = &file.path
             {
-                let _ = self.emulator.load_game(path);
+                self.load_game(path);
             }
         });
         if self.emulator.get_draw_flag() {
@@ -220,21 +287,24 @@ impl eframe::App for EmulatorWindow {
                                     .add_filter("ch8 files", &["ch8"])
                                     .pick_file()
                             {
-                                self.emulator.load_game(&path).unwrap();
+                                self.load_game(&path);
                             }
-                            if ui.button("tests").clicked() {
-                                self.emulator.load_game(Path::new("5-quirks.ch8")).unwrap();
+                            if ui.button("debug").clicked() {
+                                self.settings.debug_window_open = true;
+                            }
+                            // if ui.button("tests").clicked() {
+                            //     self.emulator.load_game(Path::new("5-quirks.ch8")).unwrap();
 
-                                self.emulator.set_memory(0x1FF, 2);
-                            }
-                            if ui.button("draw test").clicked() {
-                                self.emulator.load_game(Path::new("d.ch8")).unwrap();
-                            }
+                            //     self.emulator.set_memory(0x1FF, 2);
+                            // }
+                            // if ui.button("draw test").clicked() {
+                            //     self.emulator.load_game(Path::new("d.ch8")).unwrap();
+                            // }
 
-                            if ui.button("play sound").clicked() {
-                                self.emulator
-                                    .load_bytes_into_memory(&[0x60, 0x03, 0xF0, 0x18, 0x12, 0x04]);
-                            }
+                            // if ui.button("play sound").clicked() {
+                            //     self.emulator
+                            //         .load_bytes_into_memory(&[0x60, 0x03, 0xF0, 0x18, 0x12, 0x04]);
+                            // }
                             //  0x204
                         });
                         ui.menu_button("settings", |ui| {
@@ -255,18 +325,13 @@ impl eframe::App for EmulatorWindow {
                                 )
                                 .clicked()
                             {
-                                match self.emulator {
-                                    Emulator::Chip8(_) => {
-                                        self.emulator = Emulator::new_super_chip()
-                                    }
-                                    Emulator::SuperChip(_) => self.emulator = Emulator::new_chip8(),
-                                }
+                                self.swap_emu();
                             }
                         });
                     })
             });
         self.key_binds_window(ctx);
-
+        self.debug_window(ctx);
         egui::CentralPanel::default()
             .frame(Frame::NONE.fill(Color32::DARK_GRAY))
             .show(ctx, |ui| {

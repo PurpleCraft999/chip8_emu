@@ -266,10 +266,29 @@ impl<C: Chip> ChipEmulator<C> {
     pub fn get_game_id(&self) -> Option<u64> {
         self.game_id
     }
+    pub fn clone_emulator<T: Chip>(&self, new_chip: T) -> ChipEmulator<T> {
+        clone_emulator(self, new_chip)
+    }
+
     // pub fn transfer_game(&self,other:&mut Self){
     //     other.memory=self.memory;
     //     // other.di
     // }
+}
+
+///this fn is ment to make switching emulators from one to another as painless as posible
+pub fn clone_emulator<T: Chip>(original: &ChipEmulator<impl Chip>, new_chip: T) -> ChipEmulator<T> {
+    let mut new_emu = ChipEmulator::new(new_chip);
+    new_emu.memory = original.memory;
+    new_emu.program_counter = original.program_counter;
+    new_emu.game_id = original.game_id;
+    new_emu.delay_timer = original.delay_timer;
+    new_emu.index_register = original.index_register;
+    new_emu.v_registers = original.v_registers;
+    new_emu.stack = original.stack;
+    new_emu.stack_pointer = original.stack_pointer;
+    new_emu.has_memory_loaded = original.has_memory_loaded;
+    new_emu
 }
 #[cfg(test)]
 ///creates a `ChipEmulator` then loads the bytes into memory then runs `cycle_count` number of cycles

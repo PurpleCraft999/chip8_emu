@@ -30,14 +30,42 @@ impl Default for EmulatorSettings {
         }
     }
 }
+///copy the methods from ChipEmulator to the Emulator enum
+macro_rules! copy_methods{
+    (
+        //allows for both self and mut self to be valid
+        $self:ty,
 
-macro_rules! call_method {
-    ($self:expr,$method:ident($($args:expr),*)) => {
-        match $self{
-            Self::Chip8(  chip) => chip.$method($($args),*),
-            Self::SuperChip(  chip) => chip.$method($($args),*),
-        }
-    };
+        $(
+            //method name
+            $method:ident
+            //generic definition and type
+            $(<$($generic_name:ident:$generic_type:path),+>)?
+            //arguments if present
+            ($($arg_name:ident: $arg_type:ty),*)
+            //return type
+            $(-> $return:ty)?
+        ),+
+            //allow comma at end
+            $(,)?
+        )=>{
+        $(
+
+            fn $method$
+                //place the genric before the args
+                (<$($generic_name:$generic_type),+>)?
+                //self and args
+                (self:$self,$($arg_name: $arg_type),*)
+                //return type
+                $(-> $return)? {
+                //calls the methods on the chips
+                match self{
+                    Self::Chip8(chip) => chip.$method($($arg_name),*),
+                    Self::SuperChip(chip) => chip.$method($($arg_name),*),
+                }
+            }
+        )+
+    }
 }
 
 enum Emulator {
@@ -51,43 +79,10 @@ impl Emulator {
     fn new_super_chip() -> Self {
         Self::SuperChip(Box::new(ChipEmulator::new(SuperChipEmulator::new())))
     }
+    copy_methods! {&Self,play_sound(),get_display()->&[u8],get_draw_flag()->bool,get_display_size()->(usize,usize),get_v(registry:u8)->u8,get_memory(addr: u16) -> u8,clone_emulator<T:Chip>(new_chip:T)->ChipEmulator<T>}
+    copy_methods! {&mut Self,cycle(),tick_timers(),set_key(index:usize,state:bool),set_draw_flag(flag:bool),set_memory(a:usize,v:u8),load_bytes_into_memory(bytes: &[u8])}
 }
 
-impl Emulator {
-    fn cycle(&mut self) {
-        call_method!(self, cycle())
-    }
-    fn tick_timers(&mut self) {
-        call_method!(self, tick_timers())
-    }
-    fn get_display(&self) -> &[u8] {
-        call_method!(self, get_display())
-    }
-    fn get_draw_flag(&self) -> bool {
-        call_method!(self, get_draw_flag())
-    }
-    fn set_key(&mut self, index: usize, state: bool) {
-        call_method!(self, set_key(index, state))
-    }
-    // fn load_game(&mut self, file_path: &Path) -> io::Result<()> {
-    //     call_method!(self, load_game(file_path))
-    // }
-    fn done_drawing(&mut self) {
-        call_method!(self, set_draw_flag(false))
-    }
-    fn set_memory(&mut self, addr: usize, value: u8) {
-        call_method!(self, set_memory(addr, value))
-    }
-    fn get_display_size(&self) -> (usize, usize) {
-        call_method!(self, get_display_size())
-    }
-    fn load_bytes_into_memory(&mut self, bytes: &[u8]) {
-        call_method!(self, load_bytes_into_memory(bytes))
-    }
-    fn get_v(&self, registry: u8) -> u8 {
-        call_method!(self, get_v(registry))
-    }
-}
 impl Display for Emulator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = match self {
@@ -179,7 +174,7 @@ impl EmulatorWindow {
 
         self.chip8_screen.set(image, TextureOptions::NEAREST);
 
-        self.emulator.done_drawing();
+        self.emulator.set_draw_flag(false);
     }
     fn key_binds_window(&mut self, ctx: &Context) {
         Window::new("Key Binds")
@@ -235,10 +230,14 @@ impl EmulatorWindow {
             });
     }
     fn swap_emu(&mut self) {
-        match self.emulator {
-            Emulator::Chip8(_) => self.emulator = Emulator::new_super_chip(),
-            Emulator::SuperChip(_) => self.emulator = Emulator::new_chip8(),
-        }
+        self.emulator = match self.emulator {
+            Emulator::Chip8(_) => Emulator::SuperChip(Box::new(
+                self.emulator.clone_emulator(SuperChipEmulator::new()),
+            )),
+            Emulator::SuperChip(_) => {
+                Emulator::Chip8(Box::new(self.emulator.clone_emulator(Chip8Emulator::new())))
+            }
+        };
     }
     fn load_game(&mut self, path: &Path) {
         let bytes = fs::read(path).unwrap();
@@ -252,7 +251,6 @@ impl EmulatorWindow {
 impl eframe::App for EmulatorWindow {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint();
-
         self.chip8_cycle();
 
         ctx.input(|input| {
@@ -348,7 +346,7 @@ impl eframe::App for EmulatorWindow {
                 );
             });
 
-        self.emulator.done_drawing();
+        // self.emulator.done_drawing();
     }
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         Color32::BLACK.to_normalized_gamma_f32()

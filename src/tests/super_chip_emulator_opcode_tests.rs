@@ -21,4 +21,3 @@ fn test_lower_screen() {
     let chip = super_chip_test_helper(2, &[0x0, 0xFF, 0x0, 0xFE]);
     assert_eq!(CHIP8_SCREEN_SIZE, chip.get_display().len())
 }
-
